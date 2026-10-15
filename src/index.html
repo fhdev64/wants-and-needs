@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src * data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'">
+<title>Хотелки</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<!-- per-element lens filters are injected here by glass.js -->
+<svg id="lensDefs" width="0" height="0" style="position:absolute" aria-hidden="true"></svg>
+
+<!-- content layer -->
+<div class="wallpaper" aria-hidden="true"><i class="b1"></i><i class="b2"></i><i class="b3"></i><i class="b4"></i></div>
+
+<main class="content" id="content">
+  <section class="view" id="view"></section>
+</main>
+
+<!-- Liquid Glass functional layer -->
+<aside class="sidebar lg lg-regular" data-lens="18">
+  <div class="titlebar drag">
+    <div class="lights no-drag">
+      <button class="l close" data-w="close" aria-label="Закрыть"></button>
+      <button class="l min" data-w="min" aria-label="Свернуть"></button>
+      <button class="l max" data-w="max" aria-label="Развернуть"></button>
+    </div>
+  </div>
+
+  <nav class="nav" aria-label="Разделы">
+    <div class="nav-pill lg lg-clear" data-lens="10"></div>
+    <button class="nav-btn" data-view="list">
+      <svg viewBox="0 0 24 24"><path d="M12 20.5s-7.5-4.6-9.5-9.3C1.1 7.8 3.3 4 7 4c2 0 3.6 1.1 5 3 1.4-1.9 3-3 5-3 3.7 0 5.9 3.8 4.5 7.2-2 4.7-9.5 9.3-9.5 9.3z"/></svg>
+      <span>Мои хотелки</span><em id="count">0</em>
+    </button>
+    <button class="nav-btn" data-view="add">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg>
+      <span>Добавить</span>
+    </button>
+    <button class="nav-btn" data-view="settings">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1"/></svg>
+      <span>Настройки</span>
+    </button>
+  </nav>
+
+  <div class="side-foot">Хотелки 2.0</div>
+</aside>
+
+<header class="toolbar drag">
+  <div class="scroll-edge" aria-hidden="true"></div>
+  <h1 id="title">Мои хотелки</h1>
+  <div class="tools no-drag" id="tools"></div>
+</header>
+
+<div class="sheet-wrap" id="sheet"><div class="sheet lg lg-regular" data-lens="28" id="sheetBody" role="dialog" aria-modal="true"></div></div>
+<div class="menu lg lg-regular" data-lens="20" id="menu" role="menu"></div>
+<div class="toast lg lg-regular" data-lens="999" id="toast" role="status"></div>
+
+<script src="glass.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
