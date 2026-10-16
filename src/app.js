@@ -108,7 +108,14 @@ function toast(msg) {
   const t = $('#toast'); t.textContent = msg; t.classList.add('show');
   clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('show'), 2400);
 }
-async function persist() { await api.setData(data); $('#count').textContent = data.items.length || ''; }
+// IPC can't clone functions (item.retry) — save a plain JSON copy without runtime-only fields
+const TRANSIENT = new Set(['retry', 'prevOffers', 'infoLoading']);
+async function persist() {
+  $('#count').textContent = data.items.length || '';
+  const plain = JSON.parse(JSON.stringify(data, (k, v) => TRANSIENT.has(k) ? undefined : v));
+  try { await api.setData(plain); }
+  catch (e) { toast('Не удалось сохранить: ' + String(e.message || e).replace(/^Error invoking remote method '[^']+': /, '')); throw e; }
+}
 
 // ---------- segmented control ----------
 function seg(opts, cur, onPick) {
@@ -575,6 +582,8 @@ function renderSettings(el) {
 (async () => {
   data = await api.getData();
   data.items ||= []; data.settings ||= {};
+  // a search interrupted by closing the app must not leave spinners forever
+  for (const it of data.items) for (const k in it.status || {}) if (it.status[k] === 'loading') delete it.status[k];
   $('#count').textContent = data.items.length || '';
   view = data.settings.apiKey ? 'list' : 'settings';
   document.querySelectorAll('.nav [data-view]').forEach(b => b.classList.toggle('active', b.dataset.view === view));
