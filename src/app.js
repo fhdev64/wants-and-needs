@@ -20,6 +20,7 @@ const I = {
   minus: '<svg viewBox="0 0 24 24"><path d="M6 12h12"/></svg>',
   shield: '<svg viewBox="0 0 24 24"><path d="M12 3l7 3v5.5c0 4.4-3 8-7 9.5-4-1.5-7-5.1-7-9.5V6z"/><path d="M9 12l2 2 4-4"/></svg>',
   warn: '<svg viewBox="0 0 24 24"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17v.5"/></svg>',
+  pin: '<svg viewBox="0 0 24 24"><path d="M12 21s-6.5-6-6.5-11a6.5 6.5 0 0 1 13 0c0 5-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.3"/></svg>',
   heart: '<svg viewBox="0 0 24 24"><path d="M12 20.5s-7.5-4.6-9.5-9.3C1.1 7.8 3.3 4 7 4c2 0 3.6 1.1 5 3 1.4-1.9 3-3 5-3 3.7 0 5.9 3.8 4.5 7.2-2 4.7-9.5 9.3-9.5 9.3z"/></svg>'
 };
 const btn = (cls, html, attrs = '') => `<button class="btn lg lg-clear ${cls}" data-lens="999" ${attrs}>${html}</button>`;
@@ -214,7 +215,11 @@ function renderAdd(el, tools) {
           ${add.image ? `<img class="preview" src="${add.image}" alt="">` : `<div class="ico">${I.photo}</div><b>Перетащите фото товара</b><span>или нажмите, чтобы выбрать · Ctrl+V — вставить</span>`}
         </div>
         <div class="bigsearch">${I.search}<input id="q" placeholder="Название: AirPods 4, Dyson V15, Nike Pegasus 41…" value="${esc(add.query)}">${btn('prominent', 'Найти', 'id="go"')}</div>
-        <div class="opts"><span>Какой товар ищем</span><div id="condSeg"></div></div>
+        <div class="opts">
+          <label class="cityf" title="Город для объявлений и самовывоза">${I.pin}<input id="city" list="cities" placeholder="Вся Россия" value="${esc(city())}" spellcheck="false"></label>
+          <div id="condSeg"></div>
+        </div>
+        <datalist id="cities">${CITIES.map(c => `<option value="${c}">`).join('')}</datalist>
       </div>
       <input type="file" id="file" accept="image/*" hidden>`;
   }
@@ -231,6 +236,7 @@ function renderAdd(el, tools) {
   const drop = $('#drop');
   if (drop) {
     $('#condSeg').replaceWith(seg([['any', 'Любой'], ['new', 'Новый'], ['used', 'Б/у'], ['discounted', 'Уценка']], add.cond, k => add.cond = k));
+    $('#city').onchange = e => setCity(e.target.value).then(() => toast(city() ? 'Город: ' + city() : 'Поиск по всей России'));
     const file = $('#file');
     drop.onclick = () => file.click();
     drop.onkeydown = e => { if (e.key === 'Enter') file.click(); };
@@ -286,10 +292,24 @@ async function identify() {
   add.loading = false; rerender();
 }
 
-// ---------- progressive search: info + 4 parallel offer groups ----------
-const GROUPS = [['ozwb', 'Ozon и WB'], ['market', 'Я.Маркет и др.'], ['retail', 'Магазины'], ['used', 'Авито и б/у']];
+// ---------- progressive search: info + direct site search + AI search, all in parallel ----------
+// direct: real marketplace pages in a hidden browser window; ai: web search via the chosen model
+const GROUPS = [
+  ['avito', 'Авито', 'direct'], ['wb', 'Wildberries', 'direct'], ['ozon', 'Ozon', 'direct'], ['ym', 'Яндекс Маркет', 'direct'],
+  ['retail', 'Магазины', 'ai'], ['used', 'Б/у и уценка', 'ai'], ['market', 'Мегамаркет и др.', 'ai']
+];
+const city = () => (data.settings.city || '').trim();
+const avitoSlug = () => data.settings.citySlug || 'rossiya';
+const CITIES = ['Вся Россия', 'Москва', 'Санкт-Петербург', 'Новосибирск', 'Екатеринбург', 'Казань', 'Нижний Новгород', 'Челябинск', 'Самара', 'Омск',
+  'Ростов-на-Дону', 'Уфа', 'Красноярск', 'Воронеж', 'Пермь', 'Волгоград', 'Краснодар', 'Саратов', 'Тюмень', 'Тольятти', 'Ижевск', 'Барнаул',
+  'Иркутск', 'Хабаровск', 'Ярославль', 'Владивосток', 'Томск', 'Оренбург', 'Кемерово', 'Рязань', 'Астрахань', 'Пенза', 'Липецк', 'Тула',
+  'Киров', 'Калининград', 'Сочи', 'Севастополь', 'Симферополь', 'Махачкала', 'Ульяновск', 'Тверь', 'Брянск', 'Белгород', 'Курск', 'Сургут', 'Мурманск'];
+async function setCity(v) {
+  v = (v || '').trim(); if (/^вся россия$/i.test(v)) v = '';
+  data.settings.city = v; data.settings.citySlug = await api.citySlug(v); await persist();
+}
 const SEARCH_LINKS = q => [
-  ['Авито', `https://www.avito.ru/rossiya?q=${q}`], ['Ozon', `https://www.ozon.ru/search/?text=${q}`],
+  ['Авито', `https://www.avito.ru/${avitoSlug()}?q=${q}`], ['Ozon', `https://www.ozon.ru/search/?text=${q}`],
   ['Wildberries', `https://www.wildberries.ru/catalog/0/search.aspx?search=${q}`], ['Яндекс Маркет', `https://market.yandex.ru/search?text=${q}`],
   ['Мегамаркет', `https://megamarket.ru/catalog/?q=${q}`], ['DNS', `https://www.dns-shop.ru/search/?q=${q}`],
   ['М.Видео', `https://www.mvideo.ru/product-list-page?q=${q}`], ['AliExpress', `https://aliexpress.ru/wholesale?SearchText=${q}`]
@@ -300,7 +320,8 @@ function startSearch(item, onUpdate) {
   item.infoLoading = !item.description;
   const fresh = [];
   const merge = () => {
-    item.offers = annotate(dedupe(fresh)).sort((a, b) => a.price - b.price);
+    // suspicious (likely fakes) go to the end, everything else cheapest first
+    item.offers = annotate(dedupe(fresh)).sort((a, b) => (a.flags.includes('cheap') - b.flags.includes('cheap')) || a.price - b.price);
     const okOffers = item.offers.filter(o => !o.flags.includes('cheap'));
     const prices = okOffers.map(o => o.price), newP = okOffers.filter(o => condOf(o) === 'new').map(o => o.price);
     item.minPrice = newP.length ? Math.min(...newP) : prices.length ? Math.min(...prices) : null;
@@ -313,11 +334,25 @@ function startSearch(item, onUpdate) {
     Object.assign(item, { description: r.description, pros: r.pros || [], cons: r.cons || [], specs: r.specs || [] });
     if (!item.image && /^https:\/\//.test(r.image || '')) { item.image = r.image; onUpdate('image'); }
   }).catch(() => {}).finally(() => { item.infoLoading = false; onUpdate('info'); }));
-  const fetchGroup = g => api.offers({ name: item.name, group: g }).catch(() => api.offers({ name: item.name, group: g }));
-  for (const [g] of GROUPS) jobs.push(fetchGroup(g).then(r => {
-    fresh.push(...(r.offers || []).filter(o => o.price > 0).map(o => ({ ...o, price: Number(o.price), group: g })));
-    item.status[g] = 'done'; merge();
-  }).catch(e => { item.status[g] = 'error'; item.lastError = errText(e); }).finally(() => onUpdate('offers')));
+  const cityNow = city();
+  item.city = cityNow;
+  const addOffers = (g, list) => { fresh.push(...list.filter(o => o.price > 0).map(o => ({ ...o, price: Number(o.price), group: g }))); merge(); };
+  const runGroup = (g, kind) => {
+    item.status[g] = 'loading';
+    if (kind === 'direct') return api.scrape({ site: g, query: item.name, city: cityNow }).then(r => {
+      if (r.blocked) { item.status[g] = 'blocked'; return; }
+      addOffers(g, r.offers || []); item.status[g] = 'done';
+    });
+    return api.offers({ name: item.name, group: g, city: cityNow }).catch(() => api.offers({ name: item.name, group: g, city: cityNow }))
+      .then(r => { addOffers(g, r.offers || []); item.status[g] = 'done'; });
+  };
+  item.retry = g => {
+    const kind = GROUPS.find(x => x[0] === g)[2];
+    const p = runGroup(g, kind).catch(e => { item.status[g] = 'error'; item.lastError = errText(e); }).finally(() => onUpdate('offers'));
+    onUpdate('offers'); return p;
+  };
+  for (const [g, , kind] of GROUPS) jobs.push(runGroup(g, kind)
+    .catch(e => { item.status[g] = 'error'; item.lastError = errText(e); }).finally(() => onUpdate('offers')));
   return Promise.all(jobs).then(() => { if (!fresh.length && item.prevOffers) item.offers = item.prevOffers; });
 }
 
@@ -336,6 +371,7 @@ function detailHTML(it) {
       <div class="body">
         <h2>${esc(it.name)}</h2>
         <div class="meta">${esc([it.brand, it.category].filter(Boolean).join(' · '))}</div>
+        <div class="meta">${I.pin.replace('<svg', '<svg style="width:13px;height:13px;vertical-align:-2px;fill:none;stroke:currentColor;stroke-width:2"')} ${esc(it.city || city() || 'Вся Россия')}</div>
         <div class="range" data-slot="range"></div>
         <div data-slot="actions"></div>
       </div>
@@ -370,9 +406,16 @@ function updateDetail(root, it, state) {
   slot('sources').innerHTML = GROUPS.map(([k, l]) => {
     const st = it.status?.[k], n = (it.offers || []).filter(o => o.group === k).length;
     return st === 'loading' ? `<span class="chip"><span class="spinner s"></span>${l}</span>`
-      : st === 'error' ? `<span class="chip bad" title="${esc(it.lastError || '')}">${I.warn}${l}</span>`
+      : st === 'error' ? `<button class="chip bad" data-retry="${k}" title="${esc(it.lastError || '')} — нажмите, чтобы повторить">${I.refresh}${l}</button>`
+      : st === 'blocked' ? `<button class="chip warn" data-verify="${k}" title="Площадка просит проверку (капча или VPN). Нажмите, пройдите проверку в открывшемся окне и закройте его.">${I.warn}${l}: пройти проверку</button>`
       : st === 'done' ? `<span class="chip ${n ? 'good' : ''}">${n ? I.ok : I.minus}${l} · ${n}</span>` : '';
   }).join('');
+  slot('sources').querySelectorAll('[data-retry]').forEach(b => b.onclick = () => it.retry?.(b.dataset.retry));
+  slot('sources').querySelectorAll('[data-verify]').forEach(b => b.onclick = async () => {
+    toast('Пройдите проверку в окне и закройте его');
+    await api.verify({ site: b.dataset.verify, query: it.name, city: it.city || city() });
+    it.retry?.(b.dataset.verify);
+  });
 
   // filter control: built once, counts refreshed
   const counts = Object.fromEntries(COND_FILTERS.map(([k]) => [k, (it.offers || []).filter(o => matchCond(o, k)).length]));
@@ -392,10 +435,15 @@ function updateDetail(root, it, state) {
       if (o.host && !o.flags.includes('unknown')) tags.push(`<span class="chip good">${I.shield}${esc(shortHost(o.host))}</span>`);
       if (o.flags.includes('unknown')) tags.push(`<span class="chip warn">${I.warn}Незнакомый сайт · ${esc(o.host)}</span>`);
       if (o.flags.includes('cheap')) tags.push(`<span class="chip bad">${I.warn}Подозрительно дёшево</span>`);
+      if (o.place) {
+        const near = it.city && o.place.toLowerCase().includes(it.city.toLowerCase());
+        tags.push(`<span class="chip ${near ? 'info' : ''}">${I.pin}<span>${esc(o.place)}</span></span>`);
+      }
+      if (o.date) tags.push(`<span class="chip"><span>${esc(o.date)}</span></span>`);
       if (o.note) tags.push(`<span class="chip"><span>${esc(o.note)}</span></span>`);
       return `<div class="row offer" style="--i:${shown.has(k) ? 0 : i}; ${shown.has(k) ? 'animation:none' : ''}" data-k="${esc(k)}" data-url="${esc(o.url)}" role="link" tabindex="0">
         <div class="s"><b>${esc(o.store)}${o.seller && o.seller !== o.store && !/не указ|unknown|—/i.test(o.seller) ? ` <span style="color:var(--label2);font-weight:400">· ${esc(o.seller)}</span>` : ''}</b><div class="tags">${tags.join('')}</div></div>
-        <span class="price ${i === 0 && !o.flags.includes('cheap') ? 'best' : ''}">${rub(o.price)}</span>${o.url ? I.chev : '<span style="width:14px"></span>'}
+        <span class="price ${i === 0 && !o.flags.includes('cheap') ? 'best' : ''}" ${o.flags.includes('cheap') ? 'style="opacity:.6"' : ''}>${rub(o.price)}</span>${o.url ? I.chev : '<span style="width:14px"></span>'}
       </div>`;
     }).join('') + (loading ? '<div class="skel row"></div>'.repeat(list.length ? 1 : 3) : '')
       + (!loading && !list.length ? `<div class="none">${(it.offers || []).length ? 'Нет предложений в этой категории.' : 'Предложений не нашлось — попробуйте поиск по площадкам ниже.'}</div>` : '');

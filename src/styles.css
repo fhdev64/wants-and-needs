@@ -286,3 +286,12 @@ input::placeholder{color:var(--label3)}
   *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.1s!important}
 }
 .chip>span{min-width:0;overflow:hidden;text-overflow:ellipsis}
+
+/* city field in composer */
+.cityf{display:flex;align-items:center;gap:7px;height:40px;padding:0 14px;border-radius:999px;background:rgba(0,0,0,.22);box-shadow:inset 0 0 0 1px rgba(255,255,255,.07);min-width:0;flex:1;max-width:260px}
+.cityf:focus-within{box-shadow:inset 0 0 0 1px rgba(100,210,255,.55)}
+.cityf svg{width:16px;height:16px;fill:none;stroke:var(--label2);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.cityf input{flex:1;min-width:0;background:none;border:0;outline:0}
+.opts{padding:2px 2px}
+button.chip{cursor:pointer}
+button.chip:hover{filter:brightness(1.2)}

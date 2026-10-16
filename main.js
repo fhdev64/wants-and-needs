@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const shops = require('./scrape');
 
 const DATA = () => path.join(app.getPath('userData'), 'data.json');
 function load() {
@@ -34,6 +35,9 @@ ipcMain.handle('win', (_, a) => {
 ipcMain.handle('focus', () => { if (!win.isFocused()) win.focus(); win.webContents.focus(); });
 ipcMain.handle('open', (_, url) => { if (/^https:\/\//.test(url)) shell.openExternal(url); });
 ipcMain.handle('data:get', () => load());
+ipcMain.handle('shop:scrape', (_, { site, query, city }) => shops.scrape(site, query, city));
+ipcMain.handle('shop:citySlug', (_, c) => shops.avitoCity(c));
+ipcMain.handle('shop:verify', (_, { site, query, city }) => shops.verify(site, query, city));
 ipcMain.handle('data:set', (_, d) => { save(d); return true; });
 
 // ---------- AI providers ----------
@@ -209,10 +213,11 @@ ipcMain.handle('ai:info', async (_, { name }) => {
   return parseJson(await ask(SYS, text, null, { fast: true }));
 });
 
-ipcMain.handle('ai:offers', async (_, { name, group }) => {
-  const text = `Найди актуальные предложения товара "${name}" на площадках: ${GROUPS[group]}. ${SAFE} ` +
+ipcMain.handle('ai:offers', async (_, { name, group, city }) => {
+  const where = city ? `Пользователь в городе ${city}: в первую очередь предложения с самовывозом или быстрой доставкой в ${city}, для объявлений — в этом городе и рядом. ` : '';
+  const text = `Найди актуальные предложения товара "${name}" на площадках: ${GROUPS[group]}. ${where}${SAFE} ` +
     'Верни JSON: {"offers":[{"store":"название магазина/площадки","seller":"продавец, если известен","price":число_в_рублях,' +
-    '"condition":"new|used|discounted|refurbished","note":"до 6 слов: цвет, комплект, состояние","url":"https://...","image":"прямой URL фото товара, если есть"}]}. ' +
+    '"condition":"new|used|discounted|refurbished","note":"до 6 слов: цвет, комплект, состояние","place":"город/район продавца, если известен","url":"https://...","image":"прямой URL фото товара, если есть"}]}. ' +
     '4-8 лучших предложений, без дублей. Если на площадке товара нет — просто не включай её.';
   return parseJson(await ask(SYS, text, null, { search: true, fast: true }));
 });
