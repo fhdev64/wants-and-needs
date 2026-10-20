@@ -305,6 +305,109 @@ class _ProductScreenState extends State<ProductScreen> {
     }
   }
 
+  Future<void> _editTarget() async {
+    final ctrl = TextEditingController(text: _it['target']?.toString() ?? '');
+    final v = await glassSheet<String>(
+      context,
+      (ctx) => Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Center(child: Container(width: 40, height: 5, decoration: BoxDecoration(color: const Color(0x4DFFFFFF), borderRadius: BorderRadius.circular(3)))),
+        const SizedBox(height: 16),
+        const Eyebrow('целевая цена', color: C.gold),
+        const SizedBox(height: 6),
+        const Text('Сколько готовы заплатить?', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
+        const SizedBox(height: 6),
+        Text('Сейчас от ${rub(_it['minPrice'] as num?)}. Пришлём уведомление, когда цена опустится до вашей суммы.', style: const TextStyle(color: C.label2, height: 1.4)),
+        const SizedBox(height: 16),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 18),
+          decoration: BoxDecoration(color: const Color(0x40000000), borderRadius: BorderRadius.circular(20), border: Border.all(color: const Color(0x26FFFFFF))),
+          child: Row(children: [
+            Expanded(
+              child: TextField(
+                controller: ctrl,
+                autofocus: true,
+                keyboardType: TextInputType.number,
+                style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: C.price),
+                decoration: InputDecoration(border: InputBorder.none, hintText: '${(((_it['minPrice'] as num?) ?? 10000) * .9 / 100).round() * 100}', hintStyle: const TextStyle(color: C.label3)),
+                onSubmitted: (t) => Navigator.pop(ctx, t),
+              ),
+            ),
+            const Text('₽', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: C.label2)),
+          ]),
+        ),
+        const SizedBox(height: 16),
+        Row(children: [
+          if (_it['target'] != null) ...[Expanded(child: Btn('Убрать', kind: BtnKind.ghost, onTap: () => Navigator.pop(ctx, '0'))), const SizedBox(width: 10)],
+          Expanded(flex: 2, child: Btn('Следить за ценой', kind: BtnKind.primary, onTap: () => Navigator.pop(ctx, ctrl.text))),
+        ]),
+      ]),
+    );
+    if (v == null) return;
+    final n = int.tryParse(v.replaceAll(RegExp(r'[^0-9]'), ''));
+    try {
+      final r = await Api.i.setTarget(_it['id'], n == null || n <= 0 ? null : n);
+      HapticFeedback.mediumImpact();
+      setState(() => _it = {..._it, 'target': r['target'], 'insights': r['insights']});
+      if (mounted) toast(context, r['target'] != null ? '🎯 Следим за ценой: ${rub(r['target'] as num?)}' : 'Цель убрана');
+    } catch (e) {
+      if (mounted) toast(context, e.toString());
+    }
+  }
+
+  Widget _insightsCard() {
+    final ins = (_it['insights'] ?? {}) as Map;
+    final pts = ((ins['points'] ?? []) as List).map((p) => ((p as Map)['p'] as num).toDouble()).toList();
+    final tone = ins['tone'];
+    final hintColor = tone == 'good' ? C.green : tone == 'wait' ? C.gold : C.teal;
+    return Glass(
+      padding: const EdgeInsets.all(16),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          const Eyebrow('история цены', color: C.gold),
+          const Spacer(),
+          if (ins['min30'] != null) Text('${rub(ins['min30'] as num?)} – ${rub(ins['max30'] as num?)}', style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: C.label2)),
+        ]),
+        const SizedBox(height: 12),
+        SizedBox(
+          height: 90,
+          width: double.infinity,
+          child: pts.length >= 2
+              ? CustomPaint(painter: _ChartPainter(pts))
+              : const Center(child: Text('История появится после следующей проверки цены', style: TextStyle(color: C.label3, fontSize: 13))),
+        ),
+        if (ins['hint'] != null) ...[
+          const SizedBox(height: 12),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(color: hintColor.withValues(alpha: .12), borderRadius: BorderRadius.circular(14)),
+            child: Text('💡 ${ins['hint']}', style: TextStyle(color: Color.lerp(hintColor, Colors.white, .55), fontSize: 13.5, height: 1.4, fontWeight: FontWeight.w600)),
+          ),
+        ],
+        const SizedBox(height: 12),
+        Press(
+          onTap: _editTarget,
+          child: Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(color: C.fill, borderRadius: BorderRadius.circular(16), border: Border.all(color: const Color(0x14FFFFFF))),
+            child: Row(children: [
+              const Text('🎯', style: TextStyle(fontSize: 20)),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  const Eyebrow('целевая цена'),
+                  const SizedBox(height: 2),
+                  Text(_it['target'] != null ? rub(_it['target'] as num?) : 'Не задана — уведомим о любом снижении', style: TextStyle(fontSize: _it['target'] != null ? 18 : 14, fontWeight: FontWeight.w800, color: _it['target'] != null ? C.price : C.label2)),
+                ]),
+              ),
+              const Icon(Icons.edit_rounded, color: C.label2, size: 20),
+            ]),
+          ),
+        ),
+      ]),
+    );
+  }
+
   void _refresh() {
     setState(() => _refreshing = true);
     _start(Api.i.refreshItem(_it['id']));
@@ -426,6 +529,7 @@ class _ProductScreenState extends State<ProductScreen> {
                   ),
                 ),
                 const SizedBox(height: 14),
+                if (_saved && _it['id'] != null && widget.saved != null) ...[_insightsCard(), const SizedBox(height: 14)],
                 // prices
                 Glass(
                   padding: const EdgeInsets.fromLTRB(14, 16, 14, 8),
@@ -582,6 +686,145 @@ class _OfferRow extends StatelessWidget {
           ]),
         ]),
       ),
+    );
+  }
+}
+
+
+class _ChartPainter extends CustomPainter {
+  final List<double> pts;
+  _ChartPainter(this.pts);
+  @override
+  void paint(Canvas c, Size s) {
+    final mn = pts.reduce((a, b) => a < b ? a : b), mx = pts.reduce((a, b) => a > b ? a : b), span = (mx - mn) == 0 ? 1 : mx - mn;
+    final o = [for (var i = 0; i < pts.length; i++) Offset(i / (pts.length - 1) * s.width, s.height - 8 - (pts[i] - mn) / span * (s.height - 16))];
+    final line = Path()..moveTo(o.first.dx, o.first.dy);
+    for (final p in o.skip(1)) {
+      line.lineTo(p.dx, p.dy);
+    }
+    final fill = Path.from(line)
+      ..lineTo(s.width, s.height)
+      ..lineTo(0, s.height)
+      ..close();
+    c.drawPath(fill, Paint()..shader = const LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0x732F5BFF), Color(0x002F5BFF)]).createShader(Offset.zero & s));
+    c.drawPath(line, Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.4
+      ..strokeJoin = StrokeJoin.round
+      ..color = C.price);
+    c.drawCircle(o.last, 5, Paint()..color = C.price);
+    c.drawCircle(o.last, 10, Paint()..color = C.price.withValues(alpha: .2));
+  }
+
+  @override
+  bool shouldRepaint(_ChartPainter o) => o.pts != pts;
+}
+
+// ======================= Alerts feed =======================
+class AlertsScreen extends StatefulWidget {
+  const AlertsScreen({super.key});
+  @override
+  State<AlertsScreen> createState() => _AlertsScreenState();
+}
+
+class _AlertsScreenState extends State<AlertsScreen> {
+  List<Json>? _list;
+
+  @override
+  void initState() {
+    super.initState();
+    Api.i.alerts().then((l) {
+      if (mounted) setState(() => _list = l);
+      Api.i.markAlertsSeen().catchError((_) {});
+    }).catchError((e) {
+      if (mounted) setState(() => _list = []);
+    });
+  }
+
+  String _ago(int t) {
+    final d = DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(t));
+    if (d.inMinutes < 60) return '${d.inMinutes.clamp(1, 59)} мин назад';
+    if (d.inHours < 24) return '${d.inHours} ч назад';
+    return '${d.inDays} дн назад';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottom = MediaQuery.paddingOf(context).bottom;
+    return Scaffold(
+      body: Column(children: [
+        topBar(context, eyebrow: 'цены', title: 'Уведомления'),
+        Expanded(
+          child: _list == null
+              ? const Center(child: CircularProgressIndicator(color: C.price))
+              : _list!.isEmpty
+                  ? const Padding(
+                      padding: EdgeInsets.all(32),
+                      child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                        Icon(Icons.notifications_none_rounded, size: 60, color: C.label3),
+                        SizedBox(height: 14),
+                        Text('Пока тихо', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
+                        SizedBox(height: 8),
+                        Text('Мы проверяем цены каждые 12 часов и напишем, как только что-то подешевеет или дойдёт до вашей цели.', textAlign: TextAlign.center, style: TextStyle(color: C.label2, height: 1.45)),
+                      ]),
+                    )
+                  : ListView.separated(
+                      padding: EdgeInsets.fromLTRB(16, 4, 16, bottom + 24),
+                      physics: const BouncingScrollPhysics(),
+                      itemCount: _list!.length,
+                      separatorBuilder: (_, _) => const SizedBox(height: 10),
+                      itemBuilder: (_, i) {
+                        final a = _list![i];
+                        final target = a['kind'] == 'target';
+                        return Press(
+                          onTap: () async {
+                            try {
+                              final item = (await Api.i.items()).firstWhere((x) => x['id'] == a['itemId']);
+                              if (context.mounted) await Navigator.of(context).push(glassRoute(ProductScreen(saved: item)));
+                            } catch (_) {
+                              if (context.mounted) toast(context, 'Хотелка уже удалена');
+                            }
+                          },
+                          child: Glass(
+                            padding: const EdgeInsets.all(12),
+                            gradient: a['seen'] == true ? null : const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0x662448F5), Color(0xCC12141B)], stops: [0, .6]),
+                            child: Row(children: [
+                              SizedBox(width: 72, child: ProductImage(url: a['image'], name: a['name'] ?? '', height: 72, radius: 16)),
+                              const SizedBox(width: 14),
+                              Expanded(
+                                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                  Row(children: [
+                                    Eyebrow(target ? '🎯 цель достигнута' : '📉 подешевело', color: target ? C.green : C.gold),
+                                    const Spacer(),
+                                    Text(_ago(a['created'] as int), style: const TextStyle(fontSize: 11.5, color: C.label3)),
+                                  ]),
+                                  const SizedBox(height: 4),
+                                  Text(a['name'] ?? '', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+                                  const SizedBox(height: 4),
+                                  Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                                    Text(rub(a['newPrice'] as num?), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: C.price)),
+                                    if (a['oldPrice'] != null && a['oldPrice'] != a['newPrice']) ...[
+                                      const SizedBox(width: 8),
+                                      Padding(padding: const EdgeInsets.only(bottom: 2), child: Text(rub(a['oldPrice'] as num?), style: const TextStyle(fontSize: 13, color: C.label2, decoration: TextDecoration.lineThrough))),
+                                    ],
+                                    const Spacer(),
+                                    if (a['pct'] != null)
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                        decoration: BoxDecoration(color: C.green.withValues(alpha: .15), borderRadius: BorderRadius.circular(10)),
+                                        child: Text('−${a['pct']}%', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: C.green)),
+                                      ),
+                                  ]),
+                                  if ((a['store'] ?? '').toString().isNotEmpty) Text(a['store'], style: const TextStyle(fontSize: 12, color: C.label2)),
+                                ]),
+                              ),
+                            ]),
+                          ),
+                        );
+                      },
+                    ),
+        ),
+      ]),
     );
   }
 }

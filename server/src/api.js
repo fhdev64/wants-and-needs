@@ -5,6 +5,7 @@ const cfg = require('./config');
 const { users, sessions, items } = require('./db');
 const ai = require('./ai');
 const search = require('./search');
+const watch = require('./watch');
 
 // ---------- login via bot: app asks for a code, user confirms it in Telegram ----------
 const logins = new Map(); // code → { status, token, userId, device, exp }
@@ -30,8 +31,8 @@ function attachJob(userId, item, job) {
     Object.assign(cur, { offers: j.offers, minPrice: j.minPrice, minNew: j.minNew, minUsed: j.minUsed, minDiscounted: j.minDiscounted, maxPrice: j.maxPrice, status: j.status, city: j.city });
     if (j.info) Object.assign(cur, { description: j.info.description, pros: j.info.pros || [], cons: j.info.cons || [], specs: j.info.specs || [] });
     if (!cur.image && j.image) cur.image = j.image;
+    if (j.done) { j.listeners.delete(apply); watch.recordHistory(cur); cur.checkedAt = Date.now(); }
     items.save(userId, cur);
-    if (j.done) j.listeners.delete(apply);
   };
   job.listeners.add(apply);
   apply(job);
@@ -67,14 +68,17 @@ route('GET', '/api/auth/poll', false, ({ query }) => {
 });
 route('POST', '/api/auth/logout', true, ({ req }) => { sessions.drop((req.headers.authorization || '').replace(/^Bearer\s+/i, '')); return { ok: true }; });
 
+route('GET', '/api/alerts', true, ({ user, query }) => watch.alerts.list(user.id, +(query.get('since') || 0)));
+route('POST', '/api/alerts/seen', true, ({ user }) => { watch.alerts.markSeen(user.id); return { ok: true }; });
 route('GET', '/api/me', true, ({ user }) => {
   const list = items.list(user.id), active = list.filter(i => !i.done);
   return { ...user, count: list.length, active: active.length, done: list.length - active.length,
-    total: active.reduce((s, i) => s + (i.minPrice || 0), 0), bot: botUsername };
+    total: active.reduce((s, i) => s + (i.minPrice || 0), 0), unseen: watch.alerts.unseen(user.id), bot: botUsername };
 });
 route('PUT', '/api/me', true, ({ user, body }) => { if ('city' in body) users.setCity(user.id, String(body.city || '').slice(0, 60)); return users.get(user.id); });
 
-route('GET', '/api/items', true, ({ user }) => items.list(user.id));
+// each wish comes with its price insights (history points, 30-day range, "when to buy" hint)
+route('GET', '/api/items', true, ({ user }) => items.list(user.id).map(i => ({ ...i, insights: watch.insights(i) })));
 route('DELETE', '/api/items/:id', true, ({ user, params }) => ({ ok: items.remove(user.id, params.id) }));
 // save the result of a search as a wishlist item; offers still arriving are merged in
 route('POST', '/api/items', true, ({ user, body }) => {
@@ -90,14 +94,14 @@ route('PUT', '/api/items/:id', true, ({ user, params, body }) => {
   const item = items.get(user.id, params.id);
   if (!item) throw Object.assign(new Error('Не найдено'), { status: 404 });
   if ('done' in body) { item.done = !!body.done; item.doneAt = item.done ? Date.now() : null; }
-  return items.save(user.id, item);
+  if ('target' in body) item.target = body.target ? Math.max(1, Math.round(+body.target)) : null;
+  const saved = items.save(user.id, item);
+  return { ...saved, insights: watch.insights(saved) };
 });
 route('POST', '/api/items/:id/refresh', true, ({ user, params }) => {
   const item = items.get(user.id, params.id);
   if (!item) throw Object.assign(new Error('Не найдено'), { status: 404 });
-  const job = search.start(item.name, user.city || item.city || '', { withInfo: !item.description });
-  attachJob(user.id, item, job);
-  return search.view(job);
+  return search.view(watch.recheck(user.id, item));
 });
 
 route('POST', '/api/identify', true, async ({ body }) => ({ candidates: await ai.identify({ query: String(body.query || ''), image: body.image || null }) }));

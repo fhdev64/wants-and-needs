@@ -5,6 +5,7 @@ const { users, items } = require('./db');
 const ai = require('./ai');
 const search = require('./search');
 const api = require('./api');
+const watch = require('./watch');
 
 const TG = `https://api.telegram.org/bot${cfg.botToken}`;
 async function tg(method, params = {}) {
@@ -49,6 +50,14 @@ function card(src, { filter = 'all', saved = false } = {}) {
       lines.push(`${i + 1}. ${name} — <b>${rub(o.price)}</b> · ${COND[o.condition] || ''}${o.place ? ' · ' + esc(o.place) : ''}${flags ? '\n    ' + flags : ''}`);
     });
   } else if (!loading) lines.push(filter === 'all' ? 'Предложений не нашлось 😔' : 'В этой категории предложений нет.');
+  if (src.history?.length) {
+    const ins = watch.insights(src);
+    const parts = [];
+    if (ins.min30 != null) parts.push(`📈 За месяц: ${rub(ins.min30)}–${rub(ins.max30)}`);
+    if (src.target) parts.push(`🎯 Цель: ${rub(src.target)}${ins.atTarget ? ' ✓' : ''}`);
+    if (parts.length) lines.push(parts.join(' · '));
+    if (ins.hint) lines.push(`💡 <i>${esc(ins.hint)}</i>`);
+  }
   const info = src.info || (src.description ? src : null);
   if (info?.description && !loading) {
     lines.push('', esc(info.description));
@@ -66,6 +75,7 @@ function cardKeyboard(ref, { filter = 'all', saved = false, loading = false, don
   if (!saved) act.push({ text: '❤️ В хотелки', callback_data: `s:${ref}` });
   if (saved && !loading) act.push({ text: '🔄 Обновить цены', callback_data: `r:${ref}` });
   if (saved) act.push({ text: done ? '↩️ Вернуть' : '✅ Исполнено', callback_data: `x2:${ref}` });
+  if (saved) rows.push([{ text: '🎯 Целевая цена', callback_data: `tg:${ref}` }]);
   if (saved) act.push({ text: '🗑 Удалить', callback_data: `d:${ref}` });
   rows.push(act);
   if (saved) rows.push([{ text: '⬅️ Мои хотелки', callback_data: 'p:0' }]);
@@ -195,6 +205,16 @@ async function onMessage(m) {
   if (text === '/app' || text === B.app) return tg('sendMessage', { chat_id: chatId, parse_mode: 'HTML', reply_markup: MENU, text:
     '📱 <b>Приложения «хотелкино ✦︎»</b> — для Windows и Android.\n\nВойти просто: нажмите в приложении «Войти через Telegram» и подтвердите вход здесь. Хотелки общие для бота и приложений.\n\nСкачать: https://github.com/fhdev64/wants-and-needs/releases' });
 
+  if (s.mode?.startsWith('target:') && text) {
+    const id = s.mode.slice(7); s.mode = null;
+    const n = Math.round(+text.replace(/[^\d]/g, ''));
+    const it = items.get(user.id, id);
+    if (!it) return tg('sendMessage', { chat_id: chatId, text: 'Хотелка не найдена.', reply_markup: MENU });
+    it.target = n > 0 ? n : null; items.save(user.id, it);
+    await tg('sendMessage', { chat_id: chatId, parse_mode: 'HTML', reply_markup: MENU,
+      text: it.target ? `🎯 Готово! Напишу, как только <b>${esc(it.name)}</b> подешевеет до <b>${rub(it.target)}</b>.` : 'Цель убрана.' });
+    return showItem(chatId, user, id);
+  }
   if (s.mode === 'city' && text) {
     const city = /^вся россия$/i.test(text) ? '' : text.slice(0, 60);
     users.setCity(user.id, city); s.mode = null;
@@ -241,10 +261,18 @@ async function onCallback(cb) {
     case 'r': {
       const it = items.get(user.id, b);
       if (!it) return ack('Не найдено');
-      const job = search.start(it.name, user.city || it.city || '', { withInfo: !it.description });
-      api.attachJob(user.id, it, job);
+      const job = watch.recheck(user.id, it);
       await ack('Обновляю цены…');
       return liveCard(chatId, mid, job, user.id, { itemId: it.id });
+    }
+    case 'tg': {
+      const it = items.get(user.id, b);
+      if (!it) return ack('Не найдено');
+      st(user.id).mode = 'target:' + b;
+      await ack();
+      return tg('sendMessage', { chat_id: chatId, parse_mode: 'HTML', text:
+        `🎯 Какая цена для <b>${esc(it.name)}</b> вас устроит?\n\nСейчас от <b>${rub(it.minPrice)}</b>. Напишите число, например <code>${Math.round((it.minPrice || 10000) * 0.9 / 100) * 100}</code>. Чтобы убрать цель — отправьте 0.`,
+        reply_markup: { force_reply: true, input_field_placeholder: 'Например, 30000' } });
     }
     case 'x2': {
       const it = items.get(user.id, b);
@@ -259,6 +287,22 @@ async function onCallback(cb) {
     default: return ack();
   }
 }
+
+watch.onAlert(async (userId, a) => {
+  const head = a.kind === 'target' ? '🎯 <b>Цена дошла до вашей цели!</b>' : `📉 <b>Подешевело на ${a.pct}%</b>`;
+  const priceLine = a.oldPrice && a.oldPrice !== a.newPrice ? `<s>${rub(a.oldPrice)}</s>  →  <b>${rub(a.newPrice)}</b>` : `<b>${rub(a.newPrice)}</b>`;
+  const caption = [head, '', `<b>${esc(a.name)}</b>`, priceLine, a.store ? `🏪 ${esc(a.store)}` : '', '', '<i>хотелкино ✦︎</i>'].filter((x, i, arr) => x || arr[i - 1]).join('\n');
+  const kb = { inline_keyboard: [
+    ...(a.url ? [[{ text: '🛒 Открыть предложение', url: a.url }]] : []),
+    [{ text: '📋 Все цены', callback_data: `v:${a.itemId}` }]
+  ] };
+  try {
+    if (/^https:\/\//.test(a.image || '')) await tg('sendPhoto', { chat_id: userId, photo: a.image, caption, parse_mode: 'HTML', reply_markup: kb });
+    else throw new Error('no photo');
+  } catch {
+    await tg('sendMessage', { chat_id: userId, text: caption, parse_mode: 'HTML', reply_markup: kb }).catch(e => console.error('alert', e.message));
+  }
+});
 
 async function run() {
   const me = await tg('getMe');

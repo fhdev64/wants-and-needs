@@ -213,7 +213,7 @@ function drawGrid(el) {
   else items.sort((a, b) => b.addedAt - a.addedAt);
   el.innerHTML = summaryHTML() + '<div id="doneSeg" class="done-seg"></div>' + (items.length ? `<div class="grid">${items.map((it, i) => `
     <article class="card frost ${it.done ? 'is-done' : ''}" style="--i:${i}" data-id="${it.id}" tabindex="0">
-      <div style="position:relative">${media(it.image || it.userImage, it.name)}${it.done ? '<span class="count done">✓ ИСПОЛНЕНО</span>' : it.offers?.length ? `<span class="count">${it.offers.length} ПРЕДЛ.</span>` : ''}</div>
+      <div style="position:relative">${media(it.image || it.userImage, it.name)}${it.done ? '<span class="count done">✓ ИСПОЛНЕНО</span>' : it.insights?.atTarget ? '<span class="count done">🎯 ЦЕЛЬ</span>' : it.offers?.length ? `<span class="count">${it.offers.length} ПРЕДЛ.</span>` : ''}</div>
       <div class="body">
         <span class="eyebrow ebrand">${esc(it.brand || 'товар')}</span>
         <h3>${esc(it.name)}</h3>
@@ -386,6 +386,7 @@ function detailHTML(it) {
         <div class="meta">${esc([it.brand, it.category].filter(Boolean).join(' · ') || 'товар')}</div>
         <div class="meta">${I.pin.replace('<svg', '<svg style="width:13px;height:13px;vertical-align:-2px;fill:none;stroke:currentColor;stroke-width:2"')} ${esc(it.city || city() || 'Вся Россия')}</div>
         <div class="range" data-slot="range"></div>
+        <div data-slot="insights"></div>
         <div data-slot="actions"></div>
       </div>
     </div>
@@ -416,6 +417,8 @@ function updateDetail(root, it, state) {
   slot('range').innerHTML = (rows.length ? rows : [['Цена от', null]]).map(([l, v], i) =>
     `<div class="r"><span>${l}</span><span class="price big">${rub(v)}</span></div>`).join('')
     + (it.maxPrice != null ? `<div class="r"><span>Самая высокая</span><span class="price">${rub(it.maxPrice)}</span></div>` : '');
+  if (slot('insights') && it.id && data.items.some(i => i.id === it.id)) slot('insights').innerHTML = insightsHTML(it);
+  slot('insights')?.querySelector('#tSave')?.addEventListener('click', () => saveTarget(it, root, state));
   slot('sources').innerHTML = GROUPS.map(([k, l]) => {
     const st = it.status?.[k], n = (it.offers || []).filter(o => o.group === k).length;
     return st === 'loading' ? `<span class="chip"><span class="spinner s"></span>${l}</span>`
@@ -492,6 +495,54 @@ function renderDetailView(el, tools) {
     } catch (e) { a.disabled = false; toast(errText(e)); }
   };
 }
+
+// ---------- price history, hint, target price ----------
+function chartSVG(points) {
+  if (!points || points.length < 2) return '<div class="chart-empty">История появится после следующей проверки цены</div>';
+  const w = 280, h = 74, ps = points.map(p => p.p), mn = Math.min(...ps), mx = Math.max(...ps), span = mx - mn || 1;
+  const xy = points.map((p, i) => [i / (points.length - 1) * w, h - 8 - (p.p - mn) / span * (h - 16)]);
+  const line = xy.map(([x, y], i) => (i ? 'L' : 'M') + x.toFixed(1) + ' ' + y.toFixed(1)).join(' ');
+  const [lx, ly] = xy.at(-1);
+  return `<svg class="chart" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
+    <defs><linearGradient id="cg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2f5bff" stop-opacity=".45"/><stop offset="1" stop-color="#2f5bff" stop-opacity="0"/></linearGradient></defs>
+    <path d="${line} L ${w} ${h} L 0 ${h} Z" fill="url(#cg)"/><path d="${line}" fill="none" stroke="#a9cbff" stroke-width="2.2" stroke-linejoin="round"/>
+    <circle cx="${lx}" cy="${ly}" r="4" fill="#a9cbff"/></svg>`;
+}
+function insightsHTML(it) {
+  const ins = it.insights || {};
+  return `<div class="ins">
+    <div class="ins-h"><span class="eyebrow gold">история цены</span>${ins.min30 != null ? `<span class="ins-range">${rub(ins.min30)} – ${rub(ins.max30)}</span>` : ''}</div>
+    ${chartSVG(ins.points)}
+    ${ins.hint ? `<div class="hint ${ins.tone || 'info'}">💡 ${esc(ins.hint)}</div>` : ''}
+    <div class="target"><span class="eyebrow">🎯 целевая цена</span>
+      <div class="target-row"><input id="tInput" inputmode="numeric" placeholder="${it.minPrice ? Math.round(it.minPrice * .9 / 100) * 100 : 'например, 30000'}" value="${it.target || ''}"><span>₽</span><button class="btn prominent" id="tSave">${it.target ? 'Изменить' : 'Следить'}</button></div>
+      <small>Пришлём уведомление, когда цена опустится до этой суммы</small></div>
+  </div>`;
+}
+async function saveTarget(it, root, state) {
+  const v = Math.round(+String(root.querySelector('#tInput').value).replace(/[^\d]/g, '')) || null;
+  try {
+    const upd = await srv('PUT', '/items/' + it.id, { target: v });
+    Object.assign(it, { target: upd.target, insights: upd.insights }); await persist();
+    updateDetail(root, it, state); toast(v ? `🎯 Следим за ценой: ${rub(v)}` : 'Цель убрана');
+  } catch (e) { toast(errText(e)); }
+}
+
+// ---------- branded price alerts ----------
+async function checkAlerts() {
+  if (!data.settings.token) return;
+  const first = !data.settings.alertsSince;
+  try {
+    const list = await srv('GET', '/alerts?since=' + (data.settings.alertsSince || 0));
+    data.settings.alertsSince = Math.max(data.settings.alertsSince || 0, Date.now() - 1000, ...list.map(a => a.created));
+    await persist();
+    if (first || !list.length) return; // don't replay old alerts on the first run
+    list.slice(0, 3).reverse().forEach((a, i) => setTimeout(() => api.notify(a), i * 600));
+    await loadItems(); if (view === 'list') render();
+  } catch {}
+}
+setInterval(checkAlerts, 5 * 60e3);
+api.onOpenItem(id => { go('list'); setTimeout(() => openItem(id), 350); });
 
 // ---------- saved item sheet ----------
 const sheetState = { filter: 'any' };
@@ -608,6 +659,7 @@ async function enterApp() {
   movePill(); render();
   await loadItems(); if (view === 'list') render();
   srv('GET', '/me').then(u => { data.settings.user = u; data.settings.bot = u.bot; if ((u.city || '') !== city()) setCity(u.city); }).catch(() => {});
+  checkAlerts();
 }
 
 // ---------- boot ----------

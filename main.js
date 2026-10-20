@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, screen } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { avitoCity } = require('./server/src/shops-core');
@@ -43,6 +43,33 @@ ipcMain.handle('open', (_, url) => { if (/^(https:\/\/|tg:\/\/)/.test(url)) shel
 ipcMain.handle('data:get', () => load());
 ipcMain.handle('data:set', (_, d) => { save(d); return true; });
 ipcMain.handle('city:slug', (_, c) => avitoCity(c));
+
+// branded price-alert popups, stacked in the bottom-right corner of the screen
+const popups = [];
+function layoutPopups() {
+  const wa = screen.getPrimaryDisplay().workArea;
+  popups.forEach((w, i) => { if (!w.isDestroyed()) w.setPosition(wa.x + wa.width - 420, wa.y + wa.height - 140 - i * 128); });
+}
+ipcMain.handle('notify', (_, alert) => {
+  const w = new BrowserWindow({
+    width: 420, height: 140, frame: false, transparent: true, resizable: false, skipTaskbar: true, alwaysOnTop: true,
+    focusable: false, show: false, hasShadow: false, webPreferences: { contextIsolation: true }
+  });
+  w.loadFile(path.join(__dirname, 'src', 'notify.html'), { hash: encodeURIComponent(JSON.stringify(alert)) });
+  w.once('ready-to-show', () => w.showInactive());
+  // a click navigates to hotelkino://open/<id>: bring the app forward and open that wish
+  w.webContents.on('will-navigate', (e, url) => {
+    e.preventDefault();
+    const id = url.split('/').pop();
+    if (win.isMinimized()) win.restore();
+    win.show(); win.focus();
+    win.webContents.send('open-item', id);
+    w.close();
+  });
+  w.on('closed', () => { popups.splice(popups.indexOf(w), 1); layoutPopups(); });
+  popups.unshift(w); if (popups.length > 3) popups.at(-1).close();
+  layoutPopups();
+});
 
 // all server calls go through the main process (no CORS/CSP issues, token never leaves this machine except to our server)
 ipcMain.handle('srv', async (_, { method, path: p, body, token }) => {

@@ -51,10 +51,10 @@ const jobs = new Map();
 const cache = new Map(); // name|city → finished job, 30 min
 setInterval(() => { const t = Date.now(); for (const [k, j] of jobs) if (t - j.started > 30 * 60e3) jobs.delete(k); for (const [k, j] of cache) if (t - j.started > 30 * 60e3) cache.delete(k); }, 60e3).unref();
 
-function start(name, city = '', { withInfo = true } = {}) {
+function start(name, city = '', { withInfo = true, fresh = false } = {}) {
   const key = name.toLowerCase() + '|' + city.toLowerCase();
   const cached = cache.get(key);
-  if (cached && Date.now() - cached.started < 30 * 60e3) return cached;
+  if (cached && !fresh && Date.now() - cached.started < 30 * 60e3) return cached;
 
   const job = {
     id: crypto.randomBytes(8).toString('hex'), name, city, started: Date.now(), done: false,

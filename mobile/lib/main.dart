@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'api.dart';
+import 'notify.dart';
 import 'product.dart';
 import 'ui.dart';
 
@@ -19,6 +20,10 @@ Future<void> main() async {
   ));
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   await Api.i.load();
+  try {
+    await initNotifications();
+    await startBackgroundChecks();
+  } catch (_) {}
   runApp(const HotelkiApp());
 }
 
@@ -204,14 +209,60 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   int _tab = 0;
   final _listKey = GlobalKey<WishlistScreenState>();
+  Timer? _poll;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     Api.i.refreshMe().then((_) => mounted ? setState(() {}) : null).catchError((_) {});
+    openItemRequest.addListener(_openFromNotification);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _openFromNotification());
+    _check();
+    _poll = Timer.periodic(const Duration(minutes: 5), (_) => _check());
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    openItemRequest.removeListener(_openFromNotification);
+    _poll?.cancel();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState s) {
+    if (s == AppLifecycleState.resumed) _check();
+  }
+
+  Future<void> _check() async {
+    try {
+      final fresh = await pollAlerts();
+      await Api.i.refreshMe();
+      if (fresh.isNotEmpty) _listKey.currentState?.reload();
+      if (mounted) setState(() {});
+    } catch (_) {}
+  }
+
+  Future<void> _openFromNotification() async {
+    final id = openItemRequest.value;
+    if (id == null || !mounted) return;
+    openItemRequest.value = null;
+    try {
+      final item = (await Api.i.items()).firstWhere((i) => i['id'] == id);
+      if (!mounted) return;
+      await Navigator.of(context).push(glassRoute(ProductScreen(saved: item)));
+      _listKey.currentState?.reload();
+    } catch (_) {}
+  }
+
+  Future<void> _openAlerts() async {
+    await Navigator.of(context).push(glassRoute(const AlertsScreen()));
+    await Api.i.refreshMe().catchError((_) {});
+    if (mounted) setState(() {});
   }
 
   void _openAdd() async {
@@ -226,7 +277,7 @@ class _HomeScreenState extends State<HomeScreen> {
       extendBody: true,
       body: Stack(children: [
         IndexedStack(index: _tab, children: [
-          WishlistScreen(key: _listKey, onAdd: _openAdd),
+          WishlistScreen(key: _listKey, onAdd: _openAdd, onAlerts: _openAlerts),
           ProfileScreen(onLogout: widget.onLogout, onAdd: _openAdd, onOpenList: () => setState(() => _tab = 0)),
         ]),
         const ScrollEdge(),
@@ -302,8 +353,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
 // ======================= Wishlist =======================
 class WishlistScreen extends StatefulWidget {
-  final VoidCallback onAdd;
-  const WishlistScreen({super.key, required this.onAdd});
+  final VoidCallback onAdd, onAlerts;
+  const WishlistScreen({super.key, required this.onAdd, required this.onAlerts});
   @override
   State<WishlistScreen> createState() => WishlistScreenState();
 }
@@ -359,7 +410,22 @@ class WishlistScreenState extends State<WishlistScreen> {
             child: Padding(
               padding: EdgeInsets.fromLTRB(20, top + 16, 20, 4),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                const Eyebrow('хотелкино ✦', color: C.gold),
+                Row(children: [
+                  const Expanded(child: Eyebrow('хотелкино ✦', color: C.gold)),
+                  Stack(clipBehavior: Clip.none, children: [
+                    IconBtn(Icons.notifications_rounded, tooltip: 'Уведомления', size: 44, onTap: widget.onAlerts),
+                    if (((Api.i.user?['unseen'] ?? 0) as int) > 0)
+                      Positioned(
+                        right: -2,
+                        top: -2,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(color: C.blue, borderRadius: BorderRadius.circular(10), border: Border.all(color: C.base, width: 2)),
+                          child: Text('${Api.i.user!['unseen']}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800)),
+                        ),
+                      ),
+                  ]),
+                ]),
                 const SizedBox(height: 6),
                 const Text('Мои хотелки', style: TextStyle(fontSize: 30, fontWeight: FontWeight.w800, letterSpacing: -.8)),
                 if (all.isNotEmpty) ...[
@@ -483,14 +549,14 @@ class _ItemCard extends StatelessWidget {
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Stack(children: [
               Hero(tag: 'img-${item['id']}', child: ProductImage(url: item['image'], name: item['name'] ?? '', height: 132, radius: 16)),
-              if (n > 0 || done)
+              if (n > 0 || done || item['insights']?['atTarget'] == true)
                 Positioned(
                   top: 8,
                   right: 8,
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(color: const Color(0xCC0B0D14), borderRadius: BorderRadius.circular(10)),
-                    child: Text(done ? '✓ ИСПОЛНЕНО' : '$n ПРЕДЛ.', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: .6, color: done ? C.green : C.gold)),
+                    child: Text(done ? '✓ ИСПОЛНЕНО' : item['insights']?['atTarget'] == true ? '🎯 ЦЕЛЬ' : '$n ПРЕДЛ.', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: .6, color: done || item['insights']?['atTarget'] == true ? C.green : C.gold)),
                   ),
                 ),
             ]),
