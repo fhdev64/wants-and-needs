@@ -321,3 +321,104 @@ body.signed-out .sidebar,body.signed-out .toolbar,body.signed-out .content{displ
 .avatar{width:52px;height:52px;border-radius:50%;display:grid;place-items:center;font-size:22px;font-weight:700;background:linear-gradient(140deg,#36aef0,#5e5ce6)}
 .who{flex:1;display:flex;flex-direction:column}
 .who b{font-size:16px}.who span{color:var(--label2);font-size:13px}
+
+/* =====================================================================
+   хотелкино ✦︎ 3.0 — reference theme: near-black, electric blue glow,
+   dark glass, blue gradient CTAs, light-blue prices, uppercase eyebrows
+   ===================================================================== */
+@font-face{font-family:"Manrope";src:url("fonts/Manrope.ttf") format("truetype");font-weight:200 800;font-display:swap}
+:root{
+  --font:"Manrope","Segoe UI Variable Text","Segoe UI",system-ui,sans-serif;
+  --base:#05060a;
+  --label:#f4f6fb; --label2:#9ba1b3; --label3:#5e6478;
+  --sep:rgba(255,255,255,.08); --fill:rgba(255,255,255,.06); --fill2:rgba(255,255,255,.1);
+  --blue:#2f5bff; --price:#a9cbff; --gold:#e9c46a; --green:#4ade80; --red:#ff5a5f; --orange:#ffb020; --teal:#7cc4ff;
+  --frost-bg:rgba(18,20,27,.78);
+  --g-tint:rgba(255,255,255,.06); --g-tint-regular:rgba(18,20,27,.72);
+  --shadow:0 20px 50px -24px rgba(0,0,0,.8);
+  --r-panel:24px; --r-card:24px;
+}
+body{font-family:var(--font);font-weight:500;letter-spacing:-.01em}
+
+/* background: black with deep blue glow instead of colour blobs */
+.wallpaper{filter:none;inset:0;opacity:1;
+  background:radial-gradient(70% 60% at 15% -10%,rgba(31,68,255,.55),rgba(11,30,143,.18) 45%,transparent 70%),
+             radial-gradient(60% 55% at 95% 110%,rgba(26,59,255,.45),rgba(10,27,122,.12) 50%,transparent 75%),#05060a}
+.wallpaper i,.wallpaper::after{display:none}
+
+/* dark glass */
+.frost{background:var(--frost-bg);box-shadow:inset 0 0 0 1px rgba(255,255,255,.07),var(--shadow);-webkit-backdrop-filter:blur(24px) saturate(140%);backdrop-filter:blur(24px) saturate(140%)}
+.frost::before,.lg::before{background:linear-gradient(180deg,rgba(255,255,255,.22),rgba(255,255,255,0) 45%)}
+.lg::after{display:none}
+.sidebar{background:rgba(14,16,22,.82)!important}
+.nav-pill{background:rgba(255,255,255,.1)!important}
+.nav-btn.active svg{color:var(--price)}
+
+/* eyebrows: small uppercase labels */
+.eyebrow{display:block;font-size:11px;font-weight:700;letter-spacing:.11em;text-transform:uppercase;color:var(--label2)}
+.eyebrow.gold{color:var(--gold)}
+.toolbar h1{font-weight:800;letter-spacing:-.03em}
+
+/* buttons: blue gradient CTA with arrow, white pill secondary */
+.btn{font-weight:700}
+.btn.prominent{background:linear-gradient(90deg,#3b66ff,#1a3bf0)!important;box-shadow:0 10px 28px -8px rgba(47,91,255,.7)!important}
+.btn.prominent:hover{filter:brightness(1.08)}
+.btn.light{background:#f2f4f8!important;color:#0b0d14!important;box-shadow:none!important}
+.btn.arrow{padding-right:6px}
+.btn.arrow .arr{display:grid;place-items:center;width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.2);margin-left:10px}
+.btn.big.arrow .arr{width:40px;height:40px}
+
+/* prices: light blue */
+.price{background:var(--fill);box-shadow:inset 0 0 0 1px rgba(255,255,255,.08);color:var(--price)}
+.price.best{background:rgba(47,91,255,.22);box-shadow:inset 0 0 0 1px rgba(47,91,255,.5);color:var(--price)}
+.card .foot .price{background:none;box-shadow:none;padding:0;height:auto;font-size:19px}
+.card .foot .price small{font-size:12px}
+
+/* cards */
+.card{padding:8px;border-radius:22px}
+.card .body{padding:12px 8px 6px}
+.card .brand{margin-bottom:3px}
+.media{border-radius:16px;background:linear-gradient(180deg,#f4f6fa,#dde3ee)}
+.media.noimg{background:linear-gradient(140deg,#2448f5,#16205a)}
+.card .count{position:absolute;top:8px;right:8px;padding:4px 8px;border-radius:10px;background:rgba(11,13,20,.8);font-size:10px;font-weight:800;letter-spacing:.06em;color:var(--gold)}
+.chip{font-weight:600}
+.chip.good{color:var(--price);background:rgba(47,91,255,.16)}
+
+/* segmented → filter chips look */
+.seg{background:transparent;box-shadow:none;padding:0;gap:8px}
+.seg .thumb{display:none}
+.seg button{height:36px;padding:0 15px;border-radius:20px;background:var(--fill);box-shadow:inset 0 0 0 1px rgba(255,255,255,.1);font-weight:700}
+.seg button.on{background:var(--blue);box-shadow:none;color:#fff}
+.seg button.on small{color:rgba(255,255,255,.7)}
+
+/* product hero on a blue glow with sparkles */
+.hero{background:transparent!important;box-shadow:none!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important;text-align:center}
+.hero::before{display:none}
+.hero [data-slot=media]{position:relative;padding:28px 18px 10px}
+.hero [data-slot=media]::before{content:"";position:absolute;inset:-10px;border-radius:50%;
+  background:radial-gradient(closest-side,rgba(47,91,255,.6),rgba(25,55,230,.15) 60%,transparent);z-index:-1}
+.hero [data-slot=media]::after{content:"";position:absolute;inset:0;pointer-events:none;opacity:.8;
+  background-image:radial-gradient(1.5px 1.5px at 12% 20%,#fff,transparent),radial-gradient(1px 1px at 80% 15%,#fff,transparent),radial-gradient(1.5px 1.5px at 90% 70%,#fff,transparent),
+  radial-gradient(1px 1px at 20% 80%,#fff,transparent),radial-gradient(1px 1px at 55% 8%,#fff,transparent),radial-gradient(1.5px 1.5px at 5% 55%,#fff,transparent);
+  animation:twinkle 4s ease-in-out infinite alternate}
+@keyframes twinkle{to{opacity:.3;transform:translateY(-6px)}}
+.hero .media{height:260px;border-radius:26px;box-shadow:0 30px 60px -30px rgba(47,91,255,.8)}
+.hero h2{font-size:22px;font-weight:700;letter-spacing:-.02em}
+.hero .meta{color:var(--label2);font-size:11px;font-weight:700;letter-spacing:.11em;text-transform:uppercase}
+.range{align-items:stretch}
+.range .r{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase}
+.range .r .price.big{font-size:20px;height:auto;padding:4px 0;background:none;box-shadow:none}
+.range .r:first-child{flex-direction:column;align-items:center;gap:2px}
+.range .r:first-child .price.big{font-size:36px;font-weight:800;letter-spacing:-.02em}
+.panel-h h4{font-weight:800}
+
+/* login: blue tile with the ✦ mark */
+.login-logo{background:linear-gradient(135deg,#3b66ff,#1a2fb8 55%,#0e1440);box-shadow:0 16px 50px -10px rgba(47,91,255,.7);border:1px solid rgba(255,255,255,.2)}
+.login-logo .mark{font-size:44px;line-height:1;color:#fff}
+.tg-btn{background:linear-gradient(90deg,#3b66ff,#1a3bf0);box-shadow:0 12px 30px -10px rgba(47,91,255,.8);justify-content:space-between;padding:0 6px 0 22px}
+.tg-btn .arr{display:grid;place-items:center;width:42px;height:42px;border-radius:50%;background:rgba(255,255,255,.2)}
+.tg-btn .arr svg{width:20px;height:20px;fill:none;stroke:#fff;stroke-width:2.4}
+
+/* account card like the reference balance card */
+.account{background:linear-gradient(135deg,#2448f5,#14246e 55%,#111628)!important}
+.avatar{background:linear-gradient(140deg,#2aa3ea,#2f5bff)}

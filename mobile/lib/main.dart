@@ -8,6 +8,8 @@ import 'api.dart';
 import 'product.dart';
 import 'ui.dart';
 
+const kAppName = 'хотелкино ✦︎';
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
@@ -36,16 +38,17 @@ class _HotelkiAppState extends State<HotelkiApp> {
 
   @override
   Widget build(BuildContext context) {
+    final base = ThemeData.dark();
     return MaterialApp(
-      title: 'Хотелки',
+      title: kAppName,
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        brightness: Brightness.dark,
+      theme: base.copyWith(
         scaffoldBackgroundColor: Colors.transparent,
         colorScheme: const ColorScheme.dark(primary: C.blue, surface: C.base),
         splashFactory: NoSplash.splashFactory,
         highlightColor: Colors.transparent,
-        textTheme: ThemeData.dark().textTheme.apply(bodyColor: C.label, displayColor: C.label),
+        textTheme: base.textTheme.apply(fontFamily: kFont, bodyColor: C.label, displayColor: C.label),
+        textSelectionTheme: const TextSelectionThemeData(cursorColor: C.blue, selectionColor: Color(0x662F5BFF)),
       ),
       builder: (context, child) => MediaQuery.withClampedTextScaling(maxScaleFactor: 1.25, child: Wallpaper(child: child!)),
       home: AnimatedSwitcher(
@@ -54,6 +57,25 @@ class _HotelkiAppState extends State<HotelkiApp> {
       ),
     );
   }
+}
+
+/// brand mark: the ✦ star in a blue glass tile
+class Logo extends StatelessWidget {
+  final double size;
+  const Logo({super.key, this.size = 84});
+  @override
+  Widget build(BuildContext context) => Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(size * .3),
+          gradient: const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFF3B66FF), Color(0xFF1A2FB8), Color(0xFF0E1440)]),
+          boxShadow: const [BoxShadow(color: Color(0x802F5BFF), blurRadius: 40, offset: Offset(0, 12))],
+          border: Border.all(color: const Color(0x33FFFFFF)),
+        ),
+        alignment: Alignment.center,
+        child: Text('✦', style: TextStyle(fontSize: size * .5, color: Colors.white, height: 1)),
+      );
 }
 
 // ======================= Login via Telegram =======================
@@ -101,6 +123,7 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
       }
       _poll?.cancel();
       _poll = Timer.periodic(const Duration(seconds: 2), (_) => _check());
+      if (mounted) setState(() {});
     } catch (e) {
       if (mounted) {
         setState(() => _waiting = false);
@@ -131,56 +154,43 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
+    final pad = MediaQuery.paddingOf(context);
     return Scaffold(
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: TweenAnimationBuilder<double>(
-              tween: Tween(begin: 0, end: 1),
-              duration: const Duration(milliseconds: 900),
-              curve: spring,
-              builder: (_, v, child) => Opacity(opacity: v.clamp(0, 1), child: Transform.translate(offset: Offset(0, 30 * (1 - v)), child: child)),
-              child: Glass(
-                radius: 34,
-                padding: const EdgeInsets.fromLTRB(28, 40, 28, 28),
-                child: Column(mainAxisSize: MainAxisSize.min, children: [
-                  Container(
-                    width: 84,
-                    height: 84,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(26),
-                      gradient: const LinearGradient(colors: [Color(0x38FFFFFF), Color(0x0FFFFFFF)], begin: Alignment.topLeft, end: Alignment.bottomRight),
-                      border: const Border(top: BorderSide(color: Color(0x66FFFFFF))),
-                    ),
-                    child: const Icon(Icons.favorite_border_rounded, size: 42, color: Colors.white),
-                  ),
-                  const SizedBox(height: 18),
-                  const Text('Хотелки', style: TextStyle(fontSize: 32, fontWeight: FontWeight.w800, letterSpacing: -.8)),
-                  const SizedBox(height: 10),
-                  const Text('Список желаний и лучшие цены\nна Авито, Ozon, WB и в магазинах', textAlign: TextAlign.center, style: TextStyle(fontSize: 15.5, height: 1.45, color: C.label2)),
-                  const SizedBox(height: 30),
-                  Btn(_waiting ? 'Жду подтверждения…' : 'Войти через Telegram', icon: Icons.send_rounded, big: true, color: C.tg, busy: _waiting && _code == null, onTap: _waiting ? null : _start),
-                  AnimatedSize(
-                    duration: const Duration(milliseconds: 400),
-                    curve: spring,
-                    child: _waiting && _code != null
-                        ? Padding(
-                            padding: const EdgeInsets.only(top: 16),
-                            child: Column(children: [
-                              const Text('Нажмите «Войти» в боте и вернитесь сюда', textAlign: TextAlign.center, style: TextStyle(color: C.label2, fontSize: 14)),
-                              TextButton(onPressed: _start, child: const Text('Открыть Telegram ещё раз', style: TextStyle(color: C.teal))),
-                            ]),
-                          )
-                        : const SizedBox(width: double.infinity),
-                  ),
-                  const SizedBox(height: 14),
-                  Text('Откроется бот @${Api.i.bot}.\nХотелки общие для бота, компьютера и телефона.', textAlign: TextAlign.center, style: const TextStyle(fontSize: 12.5, height: 1.5, color: C.label3)),
-                ]),
-              ),
-            ),
+      body: Padding(
+        padding: EdgeInsets.fromLTRB(24, pad.top + 24, 24, pad.bottom + 24),
+        child: Column(children: [
+          const Spacer(flex: 3),
+          TweenAnimationBuilder<double>(
+            tween: Tween(begin: 0, end: 1),
+            duration: const Duration(milliseconds: 900),
+            curve: spring,
+            builder: (_, v, child) => Opacity(opacity: v.clamp(0, 1), child: Transform.scale(scale: .85 + .15 * v, child: child)),
+            child: const Logo(size: 96),
           ),
-        ),
+          const SizedBox(height: 28),
+          const Text(kAppName, style: TextStyle(fontSize: 34, fontWeight: FontWeight.w800, letterSpacing: -1)),
+          const SizedBox(height: 12),
+          const Text('Список желаний и лучшие цены\nна Авито, Ozon, WB и в магазинах', textAlign: TextAlign.center, style: TextStyle(fontSize: 16, height: 1.45, color: C.label2)),
+          const Spacer(flex: 4),
+          if (_waiting && _code != null) ...[
+            Glass(
+              padding: const EdgeInsets.all(16),
+              child: Row(children: [
+                const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2.2, color: C.price)),
+                const SizedBox(width: 14),
+                const Expanded(child: Text('Нажмите «Войти» в боте и вернитесь сюда', style: TextStyle(fontSize: 14.5, color: C.label2))),
+                TextButton(onPressed: _start, child: const Text('Ещё раз', style: TextStyle(color: C.price, fontWeight: FontWeight.w700))),
+              ]),
+            ),
+            const SizedBox(height: 14),
+          ],
+          SizedBox(
+            width: double.infinity,
+            child: Btn(_waiting && _code != null ? 'Открыть Telegram' : 'Войти через Telegram', icon: Icons.send_rounded, big: true, arrow: true, kind: BtnKind.primary, busy: _waiting && _code == null, onTap: _start),
+          ),
+          const SizedBox(height: 16),
+          Text('Откроется бот @${Api.i.bot} — нажмите в нём «Войти».\nХотелки общие для бота, компьютера и телефона.', textAlign: TextAlign.center, style: const TextStyle(fontSize: 12.5, height: 1.5, color: C.label3)),
+        ]),
       ),
     );
   }
@@ -217,78 +227,71 @@ class _HomeScreenState extends State<HomeScreen> {
       body: Stack(children: [
         IndexedStack(index: _tab, children: [
           WishlistScreen(key: _listKey, onAdd: _openAdd),
-          ProfileScreen(onLogout: widget.onLogout),
+          ProfileScreen(onLogout: widget.onLogout, onAdd: _openAdd, onOpenList: () => setState(() => _tab = 0)),
         ]),
         const ScrollEdge(),
       ]),
+      // reference-style dock: icons, the active one expands into a labelled pill
       bottomNavigationBar: Padding(
-        padding: EdgeInsets.fromLTRB(20, 0, 20, bottom + 14),
-        child: Row(children: [
-          Expanded(
-            child: Glass(
-              radius: 32,
-              padding: const EdgeInsets.all(6),
-              blur: 30,
-              tint: const Color(0x66283240),
-              child: SizedBox(
-                height: 52,
-                child: LayoutBuilder(builder: (_, cs) {
-                  final w = cs.maxWidth / 2;
-                  return Stack(children: [
-                    // glass droplet that slides between tabs
-                    AnimatedPositioned(
-                      duration: const Duration(milliseconds: 550),
-                      curve: spring,
-                      left: w * _tab,
-                      width: w,
-                      top: 0,
-                      bottom: 0,
-                      child: Container(decoration: BoxDecoration(color: const Color(0x24FFFFFF), borderRadius: BorderRadius.circular(26), border: const Border(top: BorderSide(color: Color(0x40FFFFFF), width: .8)))),
-                    ),
-                    Positioned.fill(
-                      child: Row(children: [
-                        _tabBtn(0, Icons.favorite_rounded, 'Хотелки'),
-                        _tabBtn(1, Icons.person_rounded, 'Профиль'),
-                      ]),
-                    ),
-                  ]);
-                }),
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          // the primary action lives on its own, like Apple's search/compose button
-          Semantics(
-            label: 'Добавить хотелку',
-            button: true,
-            child: Press(
-              onTap: _openAdd,
-              scale: .9,
-              child: Container(
-                width: 64,
-                height: 64,
-                decoration: BoxDecoration(color: C.blue.withValues(alpha: .92), shape: BoxShape.circle, border: const Border(top: BorderSide(color: Color(0x59FFFFFF)))),
-                child: const Icon(Icons.add_rounded, size: 34, color: Colors.white),
-              ),
-            ),
-          ),
-        ]),
+        padding: EdgeInsets.fromLTRB(20, 0, 20, bottom + 12),
+        child: Glass(
+          radius: 34,
+          padding: const EdgeInsets.all(6),
+          tint: const Color(0xE6151821),
+          child: Row(children: [
+            _tabBtn(0, Icons.favorite_rounded, 'Хотелки'),
+            _addBtn(),
+            _tabBtn(1, Icons.person_rounded, 'Профиль'),
+          ]),
+        ),
       ),
     );
   }
 
-  Widget _tabBtn(int i, IconData icon, String label) => Expanded(
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: () {
-            HapticFeedback.selectionClick();
-            setState(() => _tab = i);
-          },
-          child: Row(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.center, children: [
-            Icon(icon, size: 22, color: _tab == i ? C.label : C.label2),
-            const SizedBox(width: 8),
-            Flexible(child: Text(label, maxLines: 1, overflow: TextOverflow.fade, softWrap: false, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: _tab == i ? C.label : C.label2))),
+  Widget _tabBtn(int i, IconData icon, String label) {
+    final on = _tab == i;
+    return Expanded(
+      flex: on ? 5 : 3,
+      child: Press(
+        onTap: () => setState(() => _tab = i),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 450),
+          curve: spring,
+          height: 54,
+          decoration: BoxDecoration(color: on ? const Color(0x24FFFFFF) : Colors.transparent, borderRadius: BorderRadius.circular(28), border: Border.all(color: on ? const Color(0x1FFFFFFF) : Colors.transparent)),
+          child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+            Icon(icon, size: 23, color: on ? C.label : C.label3),
+            if (on) ...[
+              const SizedBox(width: 8),
+              Flexible(child: Text(label, maxLines: 1, overflow: TextOverflow.fade, softWrap: false, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700))),
+            ],
           ]),
+        ),
+      ),
+    );
+  }
+
+  Widget _addBtn() => Expanded(
+        flex: 3,
+        child: Semantics(
+          label: 'Добавить хотелку',
+          button: true,
+          child: Press(
+            onTap: _openAdd,
+            scale: .9,
+            child: Center(
+              child: Container(
+                width: 54,
+                height: 54,
+                decoration: const BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: LinearGradient(colors: [Color(0xFF3B66FF), Color(0xFF1A3BF0)]),
+                  boxShadow: [BoxShadow(color: Color(0x802F5BFF), blurRadius: 18, offset: Offset(0, 6))],
+                ),
+                child: const Icon(Icons.add_rounded, size: 30, color: Colors.white),
+              ),
+            ),
+          ),
         ),
       );
 }
@@ -335,74 +338,77 @@ class WishlistScreenState extends State<WishlistScreen> {
   Widget build(BuildContext context) {
     final top = MediaQuery.paddingOf(context).top;
     final items = _visible;
+    final all = _items ?? [];
+    final total = all.fold<num>(0, (s, i) => s + ((i['minPrice'] as num?) ?? 0));
     return RefreshIndicator(
       onRefresh: reload,
       color: C.label,
-      backgroundColor: const Color(0xFF1E2630),
+      backgroundColor: C.panel2,
       edgeOffset: top + 60,
       child: CustomScrollView(
         physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
         slivers: [
           SliverToBoxAdapter(
             child: Padding(
-              padding: EdgeInsets.fromLTRB(20, top + 14, 20, 6),
-              child: Row(children: [
-                const Expanded(child: Text('Мои хотелки', style: TextStyle(fontSize: 32, fontWeight: FontWeight.w800, letterSpacing: -.8))),
-                if ((_items ?? []).isNotEmpty)
-                  PopupMenuButton<String>(
-                    tooltip: 'Сортировка',
-                    color: const Color(0xF21E2630),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                    onSelected: (v) => setState(() => _sort = v),
-                    itemBuilder: (_) => [
-                      for (final (k, l, ic) in [('date', 'Сначала новые', Icons.schedule_rounded), ('cheap', 'Сначала дешёвые', Icons.south_rounded), ('exp', 'Сначала дорогие', Icons.north_rounded)])
-                        PopupMenuItem(value: k, child: Row(children: [Icon(ic, size: 20), const SizedBox(width: 12), Text(l), const Spacer(), if (_sort == k) const Icon(Icons.check_rounded, size: 20, color: C.blue)])),
-                    ],
-                    child: const IgnorePointer(child: IconBtn(Icons.swap_vert_rounded, tooltip: 'Сортировка')),
+              padding: EdgeInsets.fromLTRB(20, top + 16, 20, 4),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Eyebrow('хотелкино ✦', color: C.gold),
+                const SizedBox(height: 6),
+                const Text('Мои хотелки', style: TextStyle(fontSize: 30, fontWeight: FontWeight.w800, letterSpacing: -.8)),
+                if (all.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text('${all.length} ${plural(all.length, 'хотелка', 'хотелки', 'хотелок')} · всё вместе от ${rub(total)}', style: const TextStyle(fontSize: 13.5, color: C.label2)),
                   ),
               ]),
             ),
           ),
-          if ((_items ?? []).length > 3)
+          if (all.isNotEmpty)
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
-                child: Glass(
-                  radius: 24,
+                padding: const EdgeInsets.fromLTRB(20, 14, 0, 4),
+                child: Chips(items: const [('date', 'Новые'), ('cheap', 'Дешевле'), ('exp', 'Дороже')], value: _sort, onChanged: (v) => setState(() => _sort = v)),
+              ),
+            ),
+          if (all.length > 3)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
+                child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
-                  blur: 20,
+                  decoration: BoxDecoration(color: C.fill, borderRadius: BorderRadius.circular(24), border: Border.all(color: const Color(0x14FFFFFF))),
                   child: TextField(
                     onChanged: (v) => setState(() => _q = v),
                     style: const TextStyle(fontSize: 16),
-                    decoration: const InputDecoration(border: InputBorder.none, hintText: 'Поиск', hintStyle: TextStyle(color: C.label3), icon: Icon(Icons.search_rounded, color: C.label2)),
+                    decoration: const InputDecoration(border: InputBorder.none, hintText: 'Поиск по хотелкам', hintStyle: TextStyle(color: C.label3), icon: Icon(Icons.search_rounded, color: C.label2)),
                   ),
                 ),
               ),
             ),
           if (_items == null && _error == null)
-            const SliverFillRemaining(child: Center(child: CircularProgressIndicator(color: C.label)))
+            const SliverFillRemaining(child: Center(child: CircularProgressIndicator(color: C.price)))
           else if (_error != null && _items == null)
             SliverFillRemaining(child: _Empty(icon: Icons.cloud_off_rounded, title: 'Нет связи', text: _error!, action: Btn('Повторить', icon: Icons.refresh_rounded, onTap: reload)))
           else if (items.isEmpty)
             SliverFillRemaining(
               hasScrollBody: false,
               child: _Empty(
-                icon: Icons.favorite_border_rounded,
+                icon: Icons.auto_awesome_rounded,
                 title: _q.isEmpty ? 'Хотелок пока нет' : 'Ничего не найдено',
                 text: _q.isEmpty ? 'Сфотографируйте товар или введите название — найдём цены на Авито, Ozon, WB и в магазинах.' : 'Нет хотелок по запросу «$_q»',
-                action: _q.isEmpty ? Btn('Добавить хотелку', icon: Icons.add_rounded, prominent: true, big: true, onTap: widget.onAdd) : null,
+                action: _q.isEmpty ? Btn('Добавить хотелку', icon: Icons.add_rounded, kind: BtnKind.primary, big: true, onTap: widget.onAdd) : null,
               ),
             )
           else
             SliverPadding(
-              padding: EdgeInsets.fromLTRB(16, 12, 16, 120 + MediaQuery.paddingOf(context).bottom),
+              padding: EdgeInsets.fromLTRB(16, 14, 16, 130 + MediaQuery.paddingOf(context).bottom),
               sliver: SliverList.separated(
                 itemCount: (items.length + 1) ~/ 2,
-                separatorBuilder: (_, __) => const SizedBox(height: 14),
+                separatorBuilder: (_, _) => const SizedBox(height: 12),
                 itemBuilder: (_, r) => IntrinsicHeight(
                   child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                     Expanded(child: _ItemCard(item: items[r * 2], index: r * 2, onChanged: reload)),
-                    const SizedBox(width: 14),
+                    const SizedBox(width: 12),
                     Expanded(child: r * 2 + 1 < items.length ? _ItemCard(item: items[r * 2 + 1], index: r * 2 + 1, onChanged: reload) : const SizedBox()),
                   ]),
                 ),
@@ -434,21 +440,42 @@ class _ItemCard extends StatelessWidget {
           onChanged();
         },
         child: Glass(
+          radius: 22,
+          padding: const EdgeInsets.all(8),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Hero(tag: 'img-${item['id']}', child: ProductImage(url: item['image'], name: item['name'] ?? '', height: 130)),
-            const SizedBox(height: 10),
+            Stack(children: [
+              Hero(tag: 'img-${item['id']}', child: ProductImage(url: item['image'], name: item['name'] ?? '', height: 132, radius: 16)),
+              if (n > 0)
+                Positioned(
+                  top: 8,
+                  right: 8,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(color: const Color(0xCC0B0D14), borderRadius: BorderRadius.circular(10)),
+                    child: Text('$n ПРЕДЛ.', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: .6, color: C.gold)),
+                  ),
+                ),
+            ]),
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-              child: Text(item['name'] ?? '', maxLines: 3, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, height: 1.25)),
-            ),
-            const SizedBox(height: 4),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-              child: Text(n > 0 ? '$n ${plural(n, 'предложение', 'предложения', 'предложений')}' : (item['brand'] ?? ''), maxLines: 1, style: const TextStyle(fontSize: 12.5, color: C.label2)),
+              padding: const EdgeInsets.fromLTRB(6, 10, 6, 6),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Eyebrow((item['brand'] ?? '').toString().isEmpty ? 'товар' : item['brand']),
+                const SizedBox(height: 3),
+                Text(item['name'] ?? '', maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700, height: 1.25)),
+              ]),
             ),
             const Spacer(),
-            const SizedBox(height: 12),
-            FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: PriceCapsule(item['minPrice'] as num?, prefix: 'от')),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(6, 2, 6, 4),
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text.rich(TextSpan(children: [
+                  const TextSpan(text: 'от ', style: TextStyle(fontSize: 12.5, color: C.label2, fontWeight: FontWeight.w600)),
+                  TextSpan(text: rub(item['minPrice'] as num?), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: C.price)),
+                ])),
+              ),
+            ),
           ]),
         ),
       ),
@@ -463,14 +490,14 @@ class _Empty extends StatelessWidget {
   const _Empty({required this.icon, required this.title, required this.text, this.action});
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.fromLTRB(32, 0, 32, 120),
+        padding: const EdgeInsets.fromLTRB(32, 0, 32, 130),
         child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-          Icon(icon, size: 64, color: C.label3),
+          Icon(icon, size: 60, color: C.price.withValues(alpha: .6)),
           const SizedBox(height: 14),
-          Text(title, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700)),
+          Text(title, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
           const SizedBox(height: 8),
           Text(text, textAlign: TextAlign.center, style: const TextStyle(fontSize: 15, height: 1.45, color: C.label2)),
-          if (action != null) ...[const SizedBox(height: 22), action!],
+          if (action != null) ...[const SizedBox(height: 24), action!],
         ]),
       );
 }
@@ -480,52 +507,46 @@ const kCities = ['Вся Россия', 'Москва', 'Санкт-Петерб
 
 Future<void> pickCity(BuildContext context, VoidCallback onDone) async {
   final ctrl = TextEditingController();
-  final picked = await showModalBottomSheet<String>(
-    context: context,
-    isScrollControlled: true,
-    backgroundColor: Colors.transparent,
-    builder: (ctx) => Padding(
-      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
-      child: Glass(
-        radius: 34,
-        tint: const Color(0xD91A212B),
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-        child: SizedBox(
-          height: MediaQuery.sizeOf(ctx).height * .7,
-          child: Column(children: [
-            Container(width: 40, height: 5, decoration: BoxDecoration(color: C.label3, borderRadius: BorderRadius.circular(3))),
-            const SizedBox(height: 14),
-            const Text('Ваш город', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14),
-              decoration: BoxDecoration(color: const Color(0x33000000), borderRadius: BorderRadius.circular(18)),
-              child: TextField(
-                controller: ctrl,
-                textInputAction: TextInputAction.done,
-                onSubmitted: (v) => Navigator.pop(ctx, v.trim()),
-                style: const TextStyle(fontSize: 16),
-                decoration: const InputDecoration(border: InputBorder.none, hintText: 'Другой город — введите и нажмите Enter', hintStyle: TextStyle(color: C.label3)),
+  final picked = await glassSheet<String>(
+    context,
+    (ctx) => SizedBox(
+      height: MediaQuery.sizeOf(ctx).height * .68,
+      child: Column(children: [
+        Container(width: 40, height: 5, decoration: BoxDecoration(color: const Color(0x4DFFFFFF), borderRadius: BorderRadius.circular(3))),
+        const SizedBox(height: 16),
+        Row(children: [
+          const Expanded(child: Text('Ваш город', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800))),
+          IconBtn(Icons.close_rounded, tooltip: 'Закрыть', size: 40, onTap: () => Navigator.pop(ctx)),
+        ]),
+        const SizedBox(height: 14),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          decoration: BoxDecoration(color: const Color(0x33000000), borderRadius: BorderRadius.circular(20)),
+          child: TextField(
+            controller: ctrl,
+            textInputAction: TextInputAction.done,
+            onSubmitted: (v) => Navigator.pop(ctx, v.trim()),
+            style: const TextStyle(fontSize: 16),
+            decoration: const InputDecoration(border: InputBorder.none, hintText: 'Другой город — введите и нажмите Enter', hintStyle: TextStyle(color: C.label3)),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Expanded(
+          child: ListView(children: [
+            for (final c in kCities)
+              ListTile(
+                minTileHeight: 52,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 6),
+                title: Text(c, style: const TextStyle(fontSize: 16.5, fontWeight: FontWeight.w600)),
+                trailing: (c == 'Вся Россия' ? Api.i.city.isEmpty : Api.i.city == c) ? const Icon(Icons.check_circle_rounded, color: C.price) : null,
+                onTap: () => Navigator.pop(ctx, c),
               ),
-            ),
-            const SizedBox(height: 8),
-            Expanded(
-              child: ListView(children: [
-                for (final c in kCities)
-                  ListTile(
-                    minTileHeight: 52,
-                    title: Text(c, style: const TextStyle(fontSize: 16.5)),
-                    trailing: (c == 'Вся Россия' ? Api.i.city.isEmpty : Api.i.city == c) ? const Icon(Icons.check_rounded, color: C.blue) : null,
-                    onTap: () => Navigator.pop(ctx, c),
-                  ),
-              ]),
-            ),
           ]),
         ),
-      ),
+      ]),
     ),
   );
-  if (picked == null) return;
+  if (picked == null || picked.isEmpty) return;
   try {
     await Api.i.setCity(picked == 'Вся Россия' ? '' : picked);
     onDone();
@@ -535,8 +556,8 @@ Future<void> pickCity(BuildContext context, VoidCallback onDone) async {
 }
 
 class ProfileScreen extends StatefulWidget {
-  final VoidCallback onLogout;
-  const ProfileScreen({super.key, required this.onLogout});
+  final VoidCallback onLogout, onAdd, onOpenList;
+  const ProfileScreen({super.key, required this.onLogout, required this.onAdd, required this.onOpenList});
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
 }
@@ -546,72 +567,78 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget build(BuildContext context) {
     final u = Api.i.user ?? {};
     final name = (u['name'] ?? 'Пользователь') as String;
+    final count = (u['count'] ?? 0) as int;
     final top = MediaQuery.paddingOf(context).top;
-    Widget row(IconData ic, String title, String value, VoidCallback onTap) => Press(
+    Widget row(IconData ic, String title, String sub, VoidCallback onTap, {Color? color}) => Press(
           onTap: onTap,
           scale: .98,
-          child: SizedBox(
-            height: 60,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
             child: Row(children: [
-              const SizedBox(width: 6),
-              Icon(ic, color: C.teal),
+              Container(width: 42, height: 42, decoration: BoxDecoration(color: C.fill, borderRadius: BorderRadius.circular(14)), child: Icon(ic, color: color ?? C.label, size: 21)),
               const SizedBox(width: 14),
-              Expanded(child: Text(title, style: const TextStyle(fontSize: 16.5))),
-              Text(value, style: const TextStyle(fontSize: 15, color: C.label2)),
-              const SizedBox(width: 6),
-              const Icon(Icons.chevron_right_rounded, color: C.label3),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(title, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: color ?? C.label)),
+                  Text(sub, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, color: C.label2)),
+                ]),
+              ),
+              Icon(Icons.arrow_forward_rounded, color: color ?? C.label2),
             ]),
           ),
         );
     return ListView(
-      padding: EdgeInsets.fromLTRB(20, top + 14, 20, 140),
+      padding: EdgeInsets.fromLTRB(20, top + 16, 20, 150),
+      physics: const BouncingScrollPhysics(),
       children: [
-        const Text('Профиль', style: TextStyle(fontSize: 32, fontWeight: FontWeight.w800, letterSpacing: -.8)),
+        Row(children: [
+          const Expanded(child: Text('Профиль', style: TextStyle(fontSize: 30, fontWeight: FontWeight.w800, letterSpacing: -.8))),
+          Container(
+            width: 46,
+            height: 46,
+            alignment: Alignment.center,
+            decoration: const BoxDecoration(shape: BoxShape.circle, gradient: LinearGradient(colors: [C.tg, C.blue])),
+            child: Text(name.isEmpty ? '?' : name[0].toUpperCase(), style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w800)),
+          ),
+        ]),
+        Text([name, if ((u['username'] ?? '') != '') '@${u['username']}'].join(' · '), style: const TextStyle(color: C.label2, fontSize: 14)),
         const SizedBox(height: 18),
+        // blue summary card, like the balance card in the reference
         Glass(
-          padding: const EdgeInsets.all(16),
-          child: Row(children: [
-            Container(
-              width: 60,
-              height: 60,
-              alignment: Alignment.center,
-              decoration: const BoxDecoration(shape: BoxShape.circle, gradient: LinearGradient(colors: [C.tg, Color(0xFF5E5CE6)])),
-              child: Text(name.isEmpty ? '?' : name[0].toUpperCase(), style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w700)),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
-                Text([if (u['username'] != null && u['username'] != '') '@${u['username']}', 'Telegram'].join(' · '), style: const TextStyle(color: C.label2)),
-              ]),
-            ),
+          radius: 26,
+          padding: const EdgeInsets.all(18),
+          gradient: kBlueCard,
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Eyebrow('в хотелках', color: Color(0xB3FFFFFF)),
+            const SizedBox(height: 6),
+            Text('$count ${plural(count, 'товар', 'товара', 'товаров')}', style: const TextStyle(fontSize: 34, fontWeight: FontWeight.w800, letterSpacing: -.8)),
+            const SizedBox(height: 14),
+            const Divider(color: Color(0x26FFFFFF), height: 1),
+            const SizedBox(height: 12),
+            Row(children: [
+              const Text('Город поиска', style: TextStyle(color: Color(0xB3FFFFFF))),
+              const Spacer(),
+              Text(Api.i.city.isEmpty ? 'Вся Россия' : Api.i.city, style: const TextStyle(fontWeight: FontWeight.w700)),
+            ]),
+            const SizedBox(height: 16),
+            Row(children: [
+              Expanded(child: Btn('Добавить', icon: Icons.add_rounded, kind: BtnKind.primary, onTap: widget.onAdd)),
+              const SizedBox(width: 10),
+              Expanded(child: Btn('Хотелки', icon: Icons.favorite_rounded, kind: BtnKind.light, onTap: widget.onOpenList)),
+            ]),
           ]),
         ),
         const SizedBox(height: 22),
-        const Padding(padding: EdgeInsets.only(left: 6, bottom: 8), child: Text('Поиск', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700))),
-        Glass(
-          padding: const EdgeInsets.symmetric(horizontal: 10),
-          child: row(Icons.place_rounded, 'Город', Api.i.city.isEmpty ? 'Вся Россия' : Api.i.city, () => pickCity(context, () => setState(() {}))),
-        ),
-        const Padding(
-          padding: EdgeInsets.fromLTRB(8, 8, 8, 0),
-          child: Text('Объявления Авито ищутся в этом городе, а для магазинов учитываются самовывоз и доставка. Город общий с ботом.', style: TextStyle(fontSize: 13, height: 1.45, color: C.label2)),
-        ),
-        const SizedBox(height: 22),
-        const Padding(padding: EdgeInsets.only(left: 6, bottom: 8), child: Text('Телеграм-бот', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700))),
-        Glass(
-          padding: const EdgeInsets.symmetric(horizontal: 10),
-          child: row(Icons.send_rounded, 'Открыть бота', '@${Api.i.bot}', () => launchUrl(Uri.parse('https://t.me/${Api.i.bot}'), mode: LaunchMode.externalApplication)),
-        ),
-        const Padding(
-          padding: EdgeInsets.fromLTRB(8, 8, 8, 0),
-          child: Text('В боте можно просто написать название товара или прислать фото — хотелка появится и здесь.', style: TextStyle(fontSize: 13, height: 1.45, color: C.label2)),
-        ),
-        const SizedBox(height: 30),
-        Btn('Выйти', icon: Icons.logout_rounded, color: C.red.withValues(alpha: .22), onTap: () async {
+        row(Icons.place_rounded, 'Город', 'Авито ищет объявления рядом с вами', () => pickCity(context, () => setState(() {}))),
+        const Divider(color: C.sep, height: 1),
+        row(Icons.send_rounded, 'Телеграм-бот', 'Пишите название или шлите фото — @${Api.i.bot}', () => launchUrl(Uri.parse('https://t.me/${Api.i.bot}'), mode: LaunchMode.externalApplication)),
+        const Divider(color: C.sep, height: 1),
+        row(Icons.shield_rounded, 'Безопасность покупок', 'Только оплата в рублях, проверка сайтов', () => toast(context, 'Подозрительные сайты и цены помечаем в карточке товара')),
+        const Divider(color: C.sep, height: 1),
+        row(Icons.logout_rounded, 'Выйти', 'Хотелки останутся в аккаунте', () async {
           await Api.i.logout();
           widget.onLogout();
-        }),
+        }, color: C.red),
       ],
     );
   }

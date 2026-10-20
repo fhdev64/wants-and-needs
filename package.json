@@ -1,8 +1,8 @@
 {
   "name": "wants-and-needs",
-  "productName": "Хотелки",
+  "productName": "хотелкино ✦︎",
   "version": "1.0.0",
-  "description": "Мои хотелки",
+  "description": "хотелкино ✦︎ — список желаний и лучшие цены",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
@@ -10,18 +10,20 @@
   },
   "build": {
     "appId": "app.wants.needs",
-    "productName": "Hotelki",
+    "productName": "hotelkino",
     "files": [
       "main.js",
       "preload.js",
       "server/src/shops-core.js",
-      "src/**/*"
+      "src/**/*",
+      "assets/icon.png"
     ],
     "win": {
-      "target": "portable"
+      "target": "portable",
+      "icon": "assets/icon.ico"
     },
     "portable": {
-      "artifactName": "Hotelki.exe"
+      "artifactName": "hotelkino.exe"
     },
     "directories": {
       "output": "dist"

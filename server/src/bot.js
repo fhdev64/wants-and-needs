@@ -176,10 +176,10 @@ async function onMessage(m) {
     if (arg.startsWith('login_')) {
       const code = arg.slice(6), l = api.loginInfo(code);
       if (!l || l.exp < Date.now()) return tg('sendMessage', { chat_id: chatId, text: '⌛ Ссылка для входа устарела. Нажмите «Войти через Telegram» в приложении ещё раз.', reply_markup: MENU });
-      return tg('sendMessage', { chat_id: chatId, text: `🔐 Войти в «Хотелки»${l.device ? ' на устройстве <b>' + esc(l.device) + '</b>' : ''}?\n\nВаши хотелки синхронизируются между ботом и приложением.`, parse_mode: 'HTML', reply_markup: { inline_keyboard: [[{ text: '✅ Войти', callback_data: `a:${code}` }, { text: '✖️ Это не я', callback_data: `n:${code}` }]] } });
+      return tg('sendMessage', { chat_id: chatId, text: `🔐 Войти в «хотелкино ✦︎»${l.device ? ' на устройстве <b>' + esc(l.device) + '</b>' : ''}?\n\nВаши хотелки синхронизируются между ботом и приложением.`, parse_mode: 'HTML', reply_markup: { inline_keyboard: [[{ text: '✅ Войти', callback_data: `a:${code}` }, { text: '✖️ Это не я', callback_data: `n:${code}` }]] } });
     }
     return tg('sendMessage', { chat_id: chatId, parse_mode: 'HTML', reply_markup: MENU, text:
-      `Привет, ${esc(m.from.first_name || '')}! ✨ Я — <b>Хотелки</b>.\n\n` +
+      `Привет, ${esc(m.from.first_name || '')}! ✨ Я — <b>хотелкино ✦︎</b>.\n\n` +
       'Напишите название товара или пришлите его фото — я пойму, что это, добавлю в ваши хотелки и найду лучшие цены на Авито, Ozon, WB, Яндекс Маркете и в магазинах.\n\n' +
       `📍 Город: <b>${esc(user.city || 'вся Россия')}</b> — поменять можно кнопкой «Город».` });
   }
@@ -192,7 +192,7 @@ async function onMessage(m) {
     return tg('sendMessage', { chat_id: chatId, parse_mode: 'HTML', text: `📍 Сейчас: <b>${esc(user.city || 'вся Россия')}</b>\nВыберите город или напишите свой — буду искать объявления рядом с вами.`, reply_markup: { keyboard: rows, resize_keyboard: true, one_time_keyboard: true } });
   }
   if (text === '/app' || text === B.app) return tg('sendMessage', { chat_id: chatId, parse_mode: 'HTML', reply_markup: MENU, text:
-    '📱 <b>Приложения «Хотелки»</b> — для Windows и Android.\n\nВойти просто: нажмите в приложении «Войти через Telegram» и подтвердите вход здесь. Хотелки общие для бота и приложений.\n\nСкачать: https://github.com/fhdev64/wants-and-needs/releases' });
+    '📱 <b>Приложения «хотелкино ✦︎»</b> — для Windows и Android.\n\nВойти просто: нажмите в приложении «Войти через Telegram» и подтвердите вход здесь. Хотелки общие для бота и приложений.\n\nСкачать: https://github.com/fhdev64/wants-and-needs/releases' });
 
   if (s.mode === 'city' && text) {
     const city = /^вся россия$/i.test(text) ? '' : text.slice(0, 60);

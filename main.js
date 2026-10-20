@@ -6,6 +6,8 @@ const { avitoCity } = require('./server/src/shops-core');
 // The app is a thin client: wishlists, search and AI keys live on the server.
 const SERVER = (process.env.HOTELKI_SERVER || require('./package.json').hotelki.server).replace(/\/+$/, '');
 
+// keep the original data folder after the rename to «хотелкино ✦︎», so nobody gets logged out
+app.setPath('userData', process.env.HOTELKI_USERDATA || path.join(app.getPath('appData'), 'Хотелки'));
 const DATA = () => path.join(app.getPath('userData'), 'data.json');
 function load() {
   try { return JSON.parse(fs.readFileSync(DATA(), 'utf8')); }
@@ -17,10 +19,11 @@ let win;
 function createWindow() {
   win = new BrowserWindow({
     width: 1280, height: 820, minWidth: 920, minHeight: 620,
-    frame: false, backgroundColor: '#0b1016', roundedCorners: true, show: false,
+    frame: false, backgroundColor: '#05060a', icon: path.join(__dirname, 'assets', 'icon.png'), roundedCorners: true, show: false,
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true }
   });
   win.loadFile(path.join(__dirname, 'src', 'index.html'));
+  win.setTitle('хотелкино ✦︎');
   win.once('ready-to-show', () => { win.show(); win.focus(); win.webContents.focus(); });
   // Windows frameless bug: DOM gets focus (caret blinks) but keystrokes don't reach the page
   win.on('focus', () => win.webContents.focus());

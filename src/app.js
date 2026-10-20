@@ -23,6 +23,7 @@ const I = {
   pin: '<svg viewBox="0 0 24 24"><path d="M12 21s-6.5-6-6.5-11a6.5 6.5 0 0 1 13 0c0 5-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.3"/></svg>',
   heart: '<svg viewBox="0 0 24 24"><path d="M12 20.5s-7.5-4.6-9.5-9.3C1.1 7.8 3.3 4 7 4c2 0 3.6 1.1 5 3 1.4-1.9 3-3 5-3 3.7 0 5.9 3.8 4.5 7.2-2 4.7-9.5 9.3-9.5 9.3z"/></svg>'
 };
+const ARROW = '<span class="arr"><svg viewBox="0 0 24 24" style="width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>';
 const btn = (cls, html, attrs = '') => `<button class="btn lg lg-clear ${cls}" data-lens="999" ${attrs}>${html}</button>`;
 
 let data = { items: [], settings: {} };
@@ -156,7 +157,7 @@ function closeMenu() { $('#menu').classList.remove('open'); removeEventListener(
 function render() {
   const el = $('#view'), tools = $('#tools');
   tools.innerHTML = '';
-  if (view === 'list') { $('#title').textContent = 'Мои хотелки'; renderList(el, tools); }
+  if (view === 'list') { $('#title').innerHTML = '<span class="eyebrow gold">хотелкино ✦</span>Мои хотелки'; renderList(el, tools); }
   else if (view === 'add') { $('#title').textContent = add.item ? 'Товар' : 'Новая хотелка'; renderAdd(el, tools); }
   else { $('#title').textContent = 'Настройки'; renderSettings(el); }
 }
@@ -179,7 +180,7 @@ const SORTS = [
 
 function renderList(el, tools) {
   if (!data.items.length) {
-    el.innerHTML = `<div class="empty">${I.heart}<h2>Хотелок пока нет</h2><p>Добавьте товар по фото или по названию —<br>найдём цены в российских магазинах и на Авито.</p>${btn('prominent big', I.plus + 'Добавить хотелку')}</div>`;
+    el.innerHTML = `<div class="empty">${I.heart}<h2>Хотелок пока нет</h2><p>Добавьте товар по фото или по названию —<br>найдём цены в российских магазинах и на Авито.</p>${btn('prominent big arrow', 'Добавить хотелку' + ARROW)}</div>`;
     el.querySelector('.btn').onclick = () => { resetAdd(); go('add'); };
     return;
   }
@@ -203,11 +204,11 @@ function drawGrid(el) {
   else items.sort((a, b) => b.addedAt - a.addedAt);
   el.innerHTML = items.length ? `<div class="grid">${items.map((it, i) => `
     <article class="card frost" style="--i:${i}" data-id="${it.id}" tabindex="0">
-      ${media(it.image || it.userImage, it.name)}
+      <div style="position:relative">${media(it.image || it.userImage, it.name)}${it.offers?.length ? `<span class="count">${it.offers.length} ПРЕДЛ.</span>` : ''}</div>
       <div class="body">
+        <span class="eyebrow brand">${esc(it.brand || 'товар')}</span>
         <h3>${esc(it.name)}</h3>
-        <div class="sub">${esc([it.brand, it.offers?.length ? it.offers.length + ' ' + plural(it.offers.length, 'предложение', 'предложения', 'предложений') : ''].filter(Boolean).join(' · '))}</div>
-        <div class="foot"><span class="price"><small>от</small>${rub(it.minPrice)}</span></div>
+        <div class="foot"><span class="price"><small>от&nbsp;</small>${rub(it.minPrice)}</span></div>
       </div>
     </article>`).join('')}</div>`
     : `<div class="empty">${I.search}<h2>Ничего не найдено</h2><p>Нет хотелок по запросу «${esc(filter)}»</p></div>`;
@@ -245,7 +246,7 @@ function renderAdd(el, tools) {
   if (add.loading) html += `<div class="loader"><span class="spinner"></span><div>Подбираю варианты…</div></div><div class="cand-grid">${'<div class="skel"></div>'.repeat(4)}</div>`;
   if (add.candidates && !add.loading) {
     html += `<div class="h-section">Выберите подходящий товар</div><div class="h-sub">Цены начнём собирать сразу после выбора</div><div class="cand-grid">` +
-      add.candidates.map((c, i) => `<article class="card frost" style="--i:${i}" data-i="${i}" tabindex="0">${media(c.image, c.name)}<div class="body"><h3>${esc(c.name)}</h3><div class="sub">${esc(c.summary || '')}</div><div class="foot"><span class="chip"><span>${esc(c.category || c.brand || 'Товар')}</span></span></div></div></article>`).join('') +
+      add.candidates.map((c, i) => `<article class="card frost" style="--i:${i}" data-i="${i}" tabindex="0">${media(c.image, c.name)}<div class="body"><span class="eyebrow brand">${esc([c.brand, c.category].filter(Boolean).join(' · ') || 'товар')}</span><h3>${esc(c.name)}</h3><div class="sub">${esc(c.summary || '')}</div><div class="foot"><span class="chip"><span>${esc(c.category || c.brand || 'Товар')}</span></span></div></div></article>`).join('') +
       `</div>`;
     if (!add.candidates.length) html += `<div class="empty"><h2>Ничего не нашлось</h2><p>Попробуйте уточнить название</p></div>`;
   }
@@ -371,7 +372,7 @@ function detailHTML(it) {
       <div data-slot="media">${media(it.image || it.userImage, it.name)}</div>
       <div class="body">
         <h2>${esc(it.name)}</h2>
-        <div class="meta">${esc([it.brand, it.category].filter(Boolean).join(' · '))}</div>
+        <div class="meta">${esc([it.brand, it.category].filter(Boolean).join(' · ') || 'товар')}</div>
         <div class="meta">${I.pin.replace('<svg', '<svg style="width:13px;height:13px;vertical-align:-2px;fill:none;stroke:currentColor;stroke-width:2"')} ${esc(it.city || city() || 'Вся Россия')}</div>
         <div class="range" data-slot="range"></div>
         <div data-slot="actions"></div>
@@ -402,7 +403,7 @@ function updateDetail(root, it, state) {
   const minOf = c => { const p = ok.filter(o => matchCond(o, c)).map(o => o.price); return p.length ? Math.min(...p) : null; };
   const rows = [['new', 'Новый от'], ['used', 'Б/у от'], ['discounted', 'Уценка от']].map(([c, l]) => [l, minOf(c)]).filter(([, v]) => v != null);
   slot('range').innerHTML = (rows.length ? rows : [['Цена от', null]]).map(([l, v], i) =>
-    `<div class="r"><span>${l}</span><span class="price big ${i === 0 && v != null ? 'best' : ''}">${rub(v)}</span></div>`).join('')
+    `<div class="r"><span>${l}</span><span class="price big">${rub(v)}</span></div>`).join('')
     + (it.maxPrice != null ? `<div class="r"><span>Самая высокая</span><span class="price">${rub(it.maxPrice)}</span></div>` : '');
   slot('sources').innerHTML = GROUPS.map(([k, l]) => {
     const st = it.status?.[k], n = (it.offers || []).filter(o => o.group === k).length;
@@ -466,7 +467,7 @@ function renderDetailView(el, tools) {
   updateDetail(el, it, add);
   const exists = data.items.some(i => i.name === it.name);
   const box = el.querySelector('[data-slot="actions"]');
-  box.innerHTML = btn('prominent big', exists ? I.ok + 'Уже в хотелках' : I.plus + 'Добавить в хотелки');
+  box.innerHTML = exists ? btn('light big', I.ok + 'Уже в хотелках') : btn('prominent big arrow', 'Добавить в хотелки' + ARROW);
   const a = box.firstChild; a.disabled = exists;
   a.onclick = async () => {
     if (!it.jobId) return toast('Подождите, поиск ещё запускается');
@@ -475,7 +476,7 @@ function renderDetailView(el, tools) {
       // the server keeps filling the saved item while the search is still running
       const saved = await srv('POST', '/items', { jobId: it.jobId, brand: it.brand, category: it.category, image: it.image });
       data.items.unshift(saved); await persist();
-      a.innerHTML = I.ok + 'Добавлено';
+      a.innerHTML = I.ok + 'Добавлено'; a.className = a.className.replace('prominent', 'light').replace(' arrow', '');
       toast('Добавлено в хотелки — цены продолжают загружаться');
     } catch (e) { a.disabled = false; toast(errText(e)); }
   };
@@ -545,10 +546,10 @@ let loginPoll = null;
 function showLogin() {
   document.body.classList.add('signed-out');
   $('#login').innerHTML = `<div class="login-card frost">
-      <div class="login-logo">${I.heart}</div>
-      <h1>Хотелки</h1>
+      <div class="login-logo"><span class="mark">✦</span></div>
+      <h1>хотелкино ✦︎</h1>
       <p>Список желаний и лучшие цены<br>на Авито, Ozon, WB и в магазинах</p>
-      <button class="tg-btn" id="tgLogin"><svg viewBox="0 0 24 24"><path d="M21.5 4.5 2.9 11.7c-1 .4-1 1.7.1 2l4.6 1.5 1.8 5.6c.3.8 1.3 1 1.9.4l2.6-2.5 4.9 3.6c.7.5 1.7.1 1.9-.7l3.2-15c.2-1.1-.8-1.9-1.8-1.5zM9.6 14.6l-.6 4-1.5-4.7 10.3-6.5z"/></svg>Войти через Telegram</button>
+      <button class="tg-btn" id="tgLogin"><svg viewBox="0 0 24 24"><path d="M21.5 4.5 2.9 11.7c-1 .4-1 1.7.1 2l4.6 1.5 1.8 5.6c.3.8 1.3 1 1.9.4l2.6-2.5 4.9 3.6c.7.5 1.7.1 1.9-.7l3.2-15c.2-1.1-.8-1.9-1.8-1.5zM9.6 14.6l-.6 4-1.5-4.7 10.3-6.5z"/></svg><span>Войти через Telegram</span><span class="arr"><svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></button>
       <div class="login-wait" id="wait" hidden><span class="spinner s"></span><span>Подтвердите вход в боте — Telegram уже открыт</span></div>
       <small>Откроется бот <b>@${esc(data.settings.bot || 'hotelkinobot')}</b> — нажмите в нём «Войти».<br>Хотелки будут общими для бота, компьютера и телефона.</small>
     </div>`;

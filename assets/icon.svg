@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#3B66FF"/>
+      <stop offset=".55" stop-color="#1A2FB8"/>
+      <stop offset="1" stop-color="#0A0F33"/>
+    </linearGradient>
+    <radialGradient id="glow" cx=".5" cy=".5" r=".5">
+      <stop offset="0" stop-color="#9CC2FF" stop-opacity=".75"/>
+      <stop offset=".45" stop-color="#4F7BFF" stop-opacity=".25"/>
+      <stop offset="1" stop-color="#2F5BFF" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="star" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#CFE0FF"/>
+    </linearGradient>
+    <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity=".28"/>
+      <stop offset=".5" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" rx="232" fill="url(#bg)"/>
+  <rect width="1024" height="1024" rx="232" fill="url(#sheen)"/>
+  <circle cx="512" cy="512" r="400" fill="url(#glow)"/>
+  <!-- four-point star ✦ -->
+  <path fill="url(#star)" d="M512 196 C540 400 624 484 828 512 C624 540 540 624 512 828 C484 624 400 540 196 512 C400 484 484 400 512 196 Z"/>
+  <circle cx="745" cy="300" r="16" fill="#FFFFFF" opacity=".85"/>
+  <circle cx="290" cy="740" r="11" fill="#FFFFFF" opacity=".6"/>
+  <rect x="3" y="3" width="1018" height="1018" rx="229" fill="none" stroke="#FFFFFF" stroke-opacity=".22" stroke-width="6"/>
+</svg>
