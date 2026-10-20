@@ -482,6 +482,16 @@ class _ProductScreenState extends State<ProductScreen> {
           ],
         ),
         const ScrollEdge(),
+        // dim the content behind the bottom actions
+        Positioned(
+          left: 0,
+          right: 0,
+          bottom: 0,
+          height: bottom + 110,
+          child: const IgnorePointer(
+            child: DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0x0005060A), Color(0xE605060A), Color(0xFF05060A)], stops: [0, .55, 1]))),
+          ),
+        ),
         Positioned(
           left: 16,
           right: 16,
@@ -489,7 +499,7 @@ class _ProductScreenState extends State<ProductScreen> {
           child: widget.candidate != null
               ? Btn(_saved ? 'В хотелках' : 'Добавить в хотелки', icon: _saved ? Icons.check_rounded : null, kind: _saved ? BtnKind.light : BtnKind.primary, big: true, arrow: !_saved, busy: _saving, onTap: _saved ? null : _add)
               : Row(children: [
-                  Expanded(child: Btn(_done ? 'Вернуть' : 'Исполнено', icon: _done ? Icons.undo_rounded : Icons.check_circle_rounded, kind: BtnKind.light, big: true, onTap: _toggleDone)),
+                  Expanded(child: Btn(_done ? 'Вернуть' : 'Сбылось', icon: _done ? Icons.undo_rounded : Icons.check_circle_rounded, kind: BtnKind.light, big: true, onTap: _toggleDone)),
                   const SizedBox(width: 10),
                   Expanded(child: Btn(_refreshing ? 'Обновляю…' : 'Обновить', icon: Icons.refresh_rounded, kind: BtnKind.primary, big: true, busy: _refreshing, onTap: _refreshing ? null : _refresh)),
                 ]),

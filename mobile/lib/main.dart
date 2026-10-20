@@ -238,11 +238,15 @@ class _HomeScreenState extends State<HomeScreen> {
           radius: 34,
           padding: const EdgeInsets.all(6),
           tint: const Color(0xE6151821),
-          child: Row(children: [
-            _tabBtn(0, Icons.favorite_rounded, 'Хотелки'),
-            _addBtn(),
-            _tabBtn(1, Icons.person_rounded, 'Профиль'),
-          ]),
+          // fixed height: Center inside the add button would otherwise take the whole screen
+          child: SizedBox(
+            height: 54,
+            child: Row(children: [
+              _tabBtn(0, Icons.favorite_rounded, 'Хотелки'),
+              _addBtn(),
+              _tabBtn(1, Icons.person_rounded, 'Профиль'),
+            ]),
+          ),
         ),
       ),
     );
@@ -370,7 +374,7 @@ class WishlistScreenState extends State<WishlistScreen> {
                         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                           const Eyebrow('всё вместе от', color: Color(0xB3FFFFFF)),
                           const SizedBox(height: 4),
-                          FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: Text(rub(total), style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w800, letterSpacing: -.8))),
+                          FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: Text(rub(total), style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w800))),
                         ]),
                       ),
                       Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
@@ -645,7 +649,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             const Eyebrow('всё вместе от', color: Color(0xB3FFFFFF)),
             const SizedBox(height: 6),
-            FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: Text(rub((u['total'] ?? 0) as num), style: const TextStyle(fontSize: 34, fontWeight: FontWeight.w800, letterSpacing: -.8))),
+            FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: Text(rub((u['total'] ?? 0) as num), style: const TextStyle(fontSize: 34, fontWeight: FontWeight.w800))),
             const SizedBox(height: 4),
             Text('$count ${plural(count, 'хотелка', 'хотелки', 'хотелок')} · ✓ исполнено ${u['done'] ?? 0}', style: const TextStyle(color: Color(0xB3FFFFFF))),
             const SizedBox(height: 14),
@@ -658,9 +662,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ]),
             const SizedBox(height: 16),
             Row(children: [
-              Expanded(child: Btn('Добавить', icon: Icons.add_rounded, kind: BtnKind.primary, onTap: widget.onAdd)),
+              Expanded(child: Btn('Добавить', kind: BtnKind.primary, onTap: widget.onAdd)),
               const SizedBox(width: 10),
-              Expanded(child: Btn('Хотелки', icon: Icons.favorite_rounded, kind: BtnKind.light, onTap: widget.onOpenList)),
+              Expanded(child: Btn('Хотелки', kind: BtnKind.light, onTap: widget.onOpenList)),
             ]),
           ]),
         ),
