@@ -440,7 +440,7 @@ class WishlistScreenState extends State<WishlistScreen> {
                         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                           const Eyebrow('всё вместе от', color: Color(0xB3FFFFFF)),
                           const SizedBox(height: 4),
-                          FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: Text(rub(total), style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w800))),
+                          FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: CountPrice(total, style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w800))),
                         ]),
                       ),
                       Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
@@ -715,7 +715,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             const Eyebrow('всё вместе от', color: Color(0xB3FFFFFF)),
             const SizedBox(height: 6),
-            FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: Text(rub((u['total'] ?? 0) as num), style: const TextStyle(fontSize: 34, fontWeight: FontWeight.w800))),
+            FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: CountPrice((u['total'] ?? 0) as num, style: const TextStyle(fontSize: 34, fontWeight: FontWeight.w800))),
             const SizedBox(height: 4),
             Text('$count ${plural(count, 'хотелка', 'хотелки', 'хотелок')} · ✓ исполнено ${u['done'] ?? 0}', style: const TextStyle(color: Color(0xB3FFFFFF))),
             const SizedBox(height: 14),

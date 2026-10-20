@@ -233,25 +233,30 @@ class Btn extends StatelessWidget {
         duration: const Duration(milliseconds: 200),
         child: Container(
           height: h,
-          padding: EdgeInsets.only(left: 22, right: arrow ? 6 : 22),
           decoration: deco,
-          child: Row(mainAxisSize: MainAxisSize.min, mainAxisAlignment: MainAxisAlignment.center, children: [
-            if (arrow) const SizedBox(width: 40),
-            if (busy)
-              SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2.2, color: fg))
-            else if (icon != null)
-              Icon(icon, size: big ? 21 : 19, color: fg),
-            if (busy || icon != null) const SizedBox(width: 9),
-            Flexible(child: Text(label, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: big ? 16.5 : 15, fontWeight: FontWeight.w700, color: fg))),
-            if (arrow) ...[
-              const Spacer(),
-              Container(
-                width: h - 12,
-                height: h - 12,
-                decoration: const BoxDecoration(shape: BoxShape.circle, color: Color(0x33FFFFFF)),
-                child: Icon(Icons.arrow_forward_rounded, color: fg, size: 22),
+          // label centred across the whole button; the arrow circle is pinned to the right edge
+          child: Stack(alignment: Alignment.center, children: [
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: arrow ? h : 22),
+              child: Row(mainAxisSize: MainAxisSize.min, mainAxisAlignment: MainAxisAlignment.center, children: [
+                if (busy)
+                  SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2.2, color: fg))
+                else if (icon != null)
+                  Icon(icon, size: big ? 21 : 19, color: fg),
+                if (busy || icon != null) const SizedBox(width: 9),
+                Flexible(child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: big ? 16.5 : 15, fontWeight: FontWeight.w700, color: fg))),
+              ]),
+            ),
+            if (arrow)
+              Positioned(
+                right: 6,
+                child: Container(
+                  width: h - 12,
+                  height: h - 12,
+                  decoration: const BoxDecoration(shape: BoxShape.circle, color: Color(0x33FFFFFF)),
+                  child: Icon(Icons.arrow_forward_rounded, color: fg, size: 22),
+                ),
               ),
-            ],
           ]),
         ),
       ),
@@ -291,12 +296,17 @@ class BigPrice extends StatelessWidget {
   final double size;
   const BigPrice(this.value, {super.key, this.prefix, this.size = 40});
   @override
-  Widget build(BuildContext context) => Text.rich(
-        TextSpan(children: [
-          if (prefix != null) TextSpan(text: '$prefix ', style: TextStyle(fontSize: size * .42, fontWeight: FontWeight.w600, color: C.price.withValues(alpha: .7))),
-          TextSpan(text: rub(value), style: TextStyle(fontSize: size, fontWeight: FontWeight.w800, letterSpacing: -.5, color: C.price, fontFeatures: const [FontFeature.tabularFigures()])),
-        ]),
-        textAlign: TextAlign.center,
+  Widget build(BuildContext context) => TweenAnimationBuilder<double>(
+        tween: Tween(end: (value ?? 0).toDouble()),
+        duration: const Duration(milliseconds: 1100),
+        curve: Curves.easeOutQuart,
+        builder: (_, v, _) => Text.rich(
+          TextSpan(children: [
+            if (prefix != null) TextSpan(text: '$prefix ', style: TextStyle(fontSize: size * .42, fontWeight: FontWeight.w600, color: C.price.withValues(alpha: .7))),
+            TextSpan(text: value == null ? rub(null) : rub(v), style: TextStyle(fontSize: size, fontWeight: FontWeight.w800, color: C.price, fontFeatures: const [FontFeature.tabularFigures()])),
+          ]),
+          textAlign: TextAlign.center,
+        ),
       );
 }
 
@@ -566,3 +576,35 @@ Future<T?> glassSheet<T>(BuildContext context, Widget Function(BuildContext) bui
         ),
       ),
     );
+
+/// fade + slide-up with a spring, optionally delayed — used to cascade sections in
+class Reveal extends StatelessWidget {
+  final Widget child;
+  final int delayMs;
+  final double dy;
+  const Reveal({super.key, required this.child, this.delayMs = 0, this.dy = 22});
+  @override
+  Widget build(BuildContext context) => TweenAnimationBuilder<double>(
+        tween: Tween(begin: 0, end: 1),
+        duration: Duration(milliseconds: 650 + delayMs),
+        curve: Interval(delayMs / (650 + delayMs), 1, curve: spring),
+        builder: (_, v, c) => Opacity(opacity: v.clamp(0, 1), child: Transform.translate(offset: Offset(0, dy * (1 - v)), child: c)),
+        child: child,
+      );
+}
+
+/// a price that counts up to its value (and smoothly to new values)
+class CountPrice extends StatelessWidget {
+  final num? value;
+  final TextStyle style;
+  const CountPrice(this.value, {super.key, required this.style});
+  @override
+  Widget build(BuildContext context) => value == null
+      ? Text(rub(null), style: style)
+      : TweenAnimationBuilder<double>(
+          tween: Tween(end: value!.toDouble()),
+          duration: const Duration(milliseconds: 1100),
+          curve: Curves.easeOutQuart,
+          builder: (_, v, _) => Text(rub(v), style: style),
+        );
+}

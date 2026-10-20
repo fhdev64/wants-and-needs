@@ -58,10 +58,10 @@ function insights(item) {
   if (atTarget) { hint = `Цена дошла до вашей цели ${fmt(item.target)} — можно брать`; tone = 'good'; }
   else if (min30 && cur && cur <= min30 && h.length >= 3) { hint = 'Сейчас минимальная цена за месяц — хороший момент для покупки'; tone = 'good'; }
   else if (upcoming) { hint = upcoming.days <= 1 ? `Идёт ${upcoming.name} — проверьте цены ещё раз` : `Через ${upcoming.days} ${plural(upcoming.days, 'день', 'дня', 'дней')} ${upcoming.name} — цены обычно снижаются на 10–20%, можно подождать`; tone = 'wait'; }
-  else if (trend >= 5) { hint = `Цена выросла на ${trend}% — если не срочно, лучше подождать`; tone = 'wait'; }
-  else if (trend <= -5) { hint = `Цена снизилась на ${-trend}% с прошлой проверки`; tone = 'good'; }
+  else if (trend >= 5) { hint = `Цена выросла на ${trend}%: ${fmt(prev)} → ${fmt(cur)}. Если не срочно, лучше подождать`; tone = 'wait'; }
+  else if (trend <= -5) { hint = `Цена снизилась на ${-trend}%: было ${fmt(prev)}, стало ${fmt(cur)}`; tone = 'good'; }
   else if (h.length < 3) hint = 'Собираем историю цены — проверяем каждые 12 часов';
-  return { min30, max30, trend, atTarget, hint, tone, points: h.slice(-60) };
+  return { min30, max30, trend, prev, cur, atTarget, hint, tone, points: h.slice(-60) };
 }
 const fmt = n => n == null ? '—' : Math.round(n).toLocaleString('ru-RU').replace(/,/g, ' ') + ' ₽';
 const plural = (n, a, b, c) => n % 10 === 1 && n % 100 !== 11 ? a : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20) ? b : c;

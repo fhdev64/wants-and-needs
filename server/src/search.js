@@ -6,7 +6,7 @@ const shops = require('./shops');
 const cfg = require('./config');
 
 const GROUPS = [
-  ['avito', 'Авито', 'direct'], ['wb', 'Wildberries', 'direct'], ['ozon', 'Ozon', 'direct'], ['ym', 'Яндекс Маркет', 'direct'],
+  ['avito', 'Авито', 'direct'], ['wb', 'Wildberries', 'direct'], ['ozon', 'Ozon', 'direct'], ['ym', 'Яндекс Маркет', 'direct'], ['ali', 'AliExpress', 'direct'],
   ['retail', 'Магазины', 'ai'], ['used', 'Б/у и уценка', 'ai'], ['market', 'Мегамаркет и др.', 'ai']
 ].filter(g => cfg.directSearch || g[2] === 'ai');
 
@@ -25,6 +25,18 @@ function condOf(o) {
   if (/used|б\/у|бу|подерж/.test(c)) return 'used';
   return 'new';
 }
+// typical delivery to a big Russian city when the source doesn't say ("≈" marks an estimate)
+function deliveryOf(o) {
+  const d = String(o.delivery || '').replace(/\s+/g, ' ').trim();
+  if (d) return d.length > 40 ? d.slice(0, 40) + '…' : d;
+  const s = `${o.store} ${o.url}`.toLowerCase();
+  if (/avito|авито|youla|юла/.test(s)) return 'самовывоз или Авито Доставка';
+  if (/aliexpress|алиэкспресс/.test(s)) return '≈ 7–20 дней';
+  if (/ozon|wildberries|\bwb\b|market\.yandex|яндекс маркет|megamarket|мегамаркет/.test(s)) return '≈ 1–4 дня';
+  if (/dns|mvideo|м\.видео|eldorado|эльдорадо|citilink|ситилинк|re-store|mts|мтс|beeline|билайн/.test(s)) return '≈ 1–3 дня или самовывоз';
+  return '';
+}
+
 function annotate(list) {
   const news = list.filter(o => condOf(o) === 'new').map(o => o.price).sort((a, b) => a - b);
   const median = news.length ? news[Math.floor(news.length / 2)] : 0;
@@ -32,7 +44,7 @@ function annotate(list) {
     const h = host(o.url), flags = [];
     if (!h) flags.push('nourl'); else if (!trustedRoot(h)) flags.push('unknown');
     if (median && o.price < median * 0.55 && condOf(o) === 'new') flags.push('cheap');
-    return { ...o, condition: condOf(o), url: /^https:\/\//.test(o.url || '') ? o.url : '', host: trustedRoot(h) || h, flags };
+    return { ...o, condition: condOf(o), url: /^https:\/\//.test(o.url || '') ? o.url : '', host: trustedRoot(h) || h, flags, delivery: deliveryOf(o) };
   });
 }
 function dedupe(list) {

@@ -372,7 +372,12 @@ class _ProductScreenState extends State<ProductScreen> {
           height: 90,
           width: double.infinity,
           child: pts.length >= 2
-              ? CustomPaint(painter: _ChartPainter(pts))
+              ? TweenAnimationBuilder<double>(
+                  tween: Tween(begin: 0, end: 1),
+                  duration: const Duration(milliseconds: 1400),
+                  curve: const Cubic(.3, .7, .2, 1),
+                  builder: (_, t, _) => CustomPaint(painter: _ChartPainter(pts, t)),
+                )
               : const Center(child: Text('История появится после следующей проверки цены', style: TextStyle(color: C.label3, fontSize: 13))),
         ),
         if (ins['hint'] != null) ...[
@@ -432,21 +437,21 @@ class _ProductScreenState extends State<ProductScreen> {
             const SizedBox(height: 18),
             if (specs.isNotEmpty)
               LayoutBuilder(builder: (_, cs) {
-                final w = (cs.maxWidth - 1) / 2;
-                return Wrap(children: [
+                final w = (cs.maxWidth - 8) / 2;
+                return Wrap(spacing: 8, runSpacing: 8, children: [
                   for (var i = 0; i < specs.length; i++)
-                    Container(
-                      width: w,
-                      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 6),
-                      decoration: BoxDecoration(border: Border(
-                        right: i.isEven ? const BorderSide(color: Color(0x1FFFFFFF)) : BorderSide.none,
-                        bottom: i < specs.length - (specs.length.isEven ? 2 : 1) ? const BorderSide(color: Color(0x1FFFFFFF)) : BorderSide.none,
-                      )),
-                      child: Column(children: [
-                        Text('${specs[i][0]}', textAlign: TextAlign.center, style: const TextStyle(fontSize: 13, color: Color(0xB3FFFFFF))),
-                        const SizedBox(height: 4),
-                        Text('${specs[i][1]}', textAlign: TextAlign.center, style: const TextStyle(fontSize: 15.5, fontWeight: FontWeight.w700)),
-                      ]),
+                    Reveal(
+                      delayMs: i * 45,
+                      child: Container(
+                        width: w,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(color: const Color(0x14FFFFFF), borderRadius: BorderRadius.circular(16), border: Border.all(color: const Color(0x1AFFFFFF))),
+                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Eyebrow('${specs[i][0]}', color: const Color(0xB3FFFFFF)),
+                          const SizedBox(height: 4),
+                          Text('${specs[i][1]}', style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700, height: 1.3)),
+                        ]),
+                      ),
                     ),
                 ]);
               }),
@@ -454,9 +459,10 @@ class _ProductScreenState extends State<ProductScreen> {
               const SizedBox(height: 18),
               Text(info!['description'], style: const TextStyle(fontSize: 15, height: 1.55, color: Color(0xE6FFFFFF))),
             ],
-            const SizedBox(height: 14),
-            for (final p in (info?['pros'] as List? ?? [])) _pc(p.toString(), true),
-            for (final c in (info?['cons'] as List? ?? [])) _pc(c.toString(), false),
+            const SizedBox(height: 16),
+            if ((info?['pros'] as List? ?? []).isNotEmpty) Reveal(delayMs: 100, child: _pcCard('Плюсы', (info!['pros'] as List).map((e) => '$e').toList(), true)),
+            const SizedBox(height: 10),
+            if ((info?['cons'] as List? ?? []).isNotEmpty) Reveal(delayMs: 180, child: _pcCard('Минусы', (info!['cons'] as List).map((e) => '$e').toList(), false)),
             if (info == null) const Text('Описание ещё загружается…', style: TextStyle(color: C.label2)),
           ]),
         ),
@@ -464,14 +470,37 @@ class _ProductScreenState extends State<ProductScreen> {
     );
   }
 
-  Widget _pc(String t, bool plus) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4),
-        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Icon(plus ? Icons.add_circle_rounded : Icons.remove_circle_rounded, size: 18, color: plus ? C.green : C.red),
-          const SizedBox(width: 8),
-          Expanded(child: Text(t, style: const TextStyle(fontSize: 14.5, height: 1.4))),
+  Widget _pcCard(String title, List<String> list, bool plus) {
+    final c = plus ? C.green : C.red;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(18),
+        gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [c.withValues(alpha: .14), const Color(0x08FFFFFF)], stops: const [0, .6]),
+        border: Border.all(color: const Color(0x14FFFFFF)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Container(width: 30, height: 30, decoration: BoxDecoration(color: c.withValues(alpha: .18), borderRadius: BorderRadius.circular(10)), child: Icon(plus ? Icons.check_rounded : Icons.remove_rounded, color: c, size: 18)),
+          const SizedBox(width: 10),
+          Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+          const Spacer(),
+          Text('${list.length}', style: const TextStyle(color: C.label3, fontWeight: FontWeight.w700)),
         ]),
-      );
+        const SizedBox(height: 10),
+        for (final t in list)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Container(margin: const EdgeInsets.only(top: 7, right: 10), width: 6, height: 6, decoration: BoxDecoration(color: c, shape: BoxShape.circle)),
+              Expanded(child: Text(t, style: const TextStyle(fontSize: 14.5, height: 1.4))),
+            ]),
+          ),
+      ]),
+    );
+  }
+
 
   @override
   Widget build(BuildContext context) {
@@ -529,9 +558,9 @@ class _ProductScreenState extends State<ProductScreen> {
                   ),
                 ),
                 const SizedBox(height: 14),
-                if (_saved && _it['id'] != null && widget.saved != null) ...[_insightsCard(), const SizedBox(height: 14)],
+                if (_saved && _it['id'] != null && widget.saved != null) ...[Reveal(delayMs: 80, child: _insightsCard()), const SizedBox(height: 14)],
                 // prices
-                Glass(
+                Reveal(delayMs: 140, child: Glass(
                   padding: const EdgeInsets.fromLTRB(14, 16, 14, 8),
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Row(children: [
@@ -559,7 +588,7 @@ class _ProductScreenState extends State<ProductScreen> {
                       ]),
                     ),
                   ]),
-                ),
+                )),
                 const SizedBox(height: 14),
                 // manual search links
                 Glass(
@@ -613,7 +642,7 @@ class _ProductScreenState extends State<ProductScreen> {
   }
 
   static const _defaultGroups = [
-    {'key': 'avito', 'label': 'Авито'}, {'key': 'wb', 'label': 'Wildberries'}, {'key': 'ozon', 'label': 'Ozon'}, {'key': 'ym', 'label': 'Яндекс Маркет'},
+    {'key': 'avito', 'label': 'Авито'}, {'key': 'wb', 'label': 'Wildberries'}, {'key': 'ozon', 'label': 'Ozon'}, {'key': 'ym', 'label': 'Яндекс Маркет'}, {'key': 'ali', 'label': 'AliExpress'},
     {'key': 'retail', 'label': 'Магазины'}, {'key': 'used', 'label': 'Б/у и уценка'}, {'key': 'market', 'label': 'Мегамаркет и др.'},
   ];
 
@@ -639,7 +668,7 @@ class _ProductScreenState extends State<ProductScreen> {
     return [
       ('Авито', 'https://www.avito.ru/rossiya?q=$q'), ('Ozon', 'https://www.ozon.ru/search/?text=$q'), ('Wildberries', 'https://www.wildberries.ru/catalog/0/search.aspx?search=$q'),
       ('Яндекс Маркет', 'https://market.yandex.ru/search?text=$q'), ('Мегамаркет', 'https://megamarket.ru/catalog/?q=$q'), ('DNS', 'https://www.dns-shop.ru/search/?q=$q'),
-      ('М.Видео', 'https://www.mvideo.ru/product-list-page?q=$q'), ('AliExpress', 'https://aliexpress.ru/wholesale?SearchText=$q'),
+      ('М.Видео', 'https://www.mvideo.ru/product-list-page?q=$q'), ('AliExpress', 'https://aliexpress.ru/wholesale?SearchText=$q&g=y'),
     ];
   }
 }
@@ -682,6 +711,7 @@ class _OfferRow extends StatelessWidget {
             if ((o['host'] ?? '').toString().isNotEmpty && !flags.contains('unknown')) Tag(o['host'], icon: Icons.verified_user_rounded, color: C.green),
             if (flags.contains('unknown')) const Tag('Незнакомый сайт', icon: Icons.warning_amber_rounded, color: C.orange),
             if (flags.contains('cheap')) const Tag('Подозрительно дёшево', icon: Icons.warning_amber_rounded, color: C.red),
+            if ((o['delivery'] ?? '').toString().isNotEmpty) Tag(o['delivery'], icon: Icons.local_shipping_rounded, color: C.teal),
             if (place.isNotEmpty) Tag(place, icon: Icons.place_rounded, color: near ? C.price : null),
           ]),
         ]),
@@ -693,7 +723,8 @@ class _OfferRow extends StatelessWidget {
 
 class _ChartPainter extends CustomPainter {
   final List<double> pts;
-  _ChartPainter(this.pts);
+  final double t; // 0..1 draw progress
+  _ChartPainter(this.pts, [this.t = 1]);
   @override
   void paint(Canvas c, Size s) {
     final mn = pts.reduce((a, b) => a < b ? a : b), mx = pts.reduce((a, b) => a > b ? a : b), span = (mx - mn) == 0 ? 1 : mx - mn;
@@ -706,18 +737,21 @@ class _ChartPainter extends CustomPainter {
       ..lineTo(s.width, s.height)
       ..lineTo(0, s.height)
       ..close();
-    c.drawPath(fill, Paint()..shader = const LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0x732F5BFF), Color(0x002F5BFF)]).createShader(Offset.zero & s));
-    c.drawPath(line, Paint()
+    c.drawPath(fill, Paint()..shader = LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color.fromRGBO(47, 91, 255, .45 * ((t - .5) * 2).clamp(0, 1)), const Color(0x002F5BFF)]).createShader(Offset.zero & s));
+    final m = line.computeMetrics().first;
+    c.drawPath(m.extractPath(0, m.length * t), Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2.4
       ..strokeJoin = StrokeJoin.round
       ..color = C.price);
-    c.drawCircle(o.last, 5, Paint()..color = C.price);
-    c.drawCircle(o.last, 10, Paint()..color = C.price.withValues(alpha: .2));
+    if (t >= .98) {
+      c.drawCircle(o.last, 5, Paint()..color = C.price);
+      c.drawCircle(o.last, 10, Paint()..color = C.price.withValues(alpha: .2));
+    }
   }
 
   @override
-  bool shouldRepaint(_ChartPainter o) => o.pts != pts;
+  bool shouldRepaint(_ChartPainter o) => o.pts != pts || o.t != t;
 }
 
 // ======================= Alerts feed =======================

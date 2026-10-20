@@ -48,7 +48,7 @@ async function scrape(site, query, city) {
     }
     if (blocked) return { blocked: true, offers: [] };
     const offers = items.filter(it => it.price > 0 && relevant(it.title, query)).slice(0, 12).map(it => ({
-      store: S.name, seller: '', price: it.price, url: it.url, image: it.image,
+      store: S.name, seller: '', price: it.price, url: it.url, image: it.image, delivery: it.delivery || '',
       condition: condFromText(it.title + ' ' + it.text, S.cond), note: it.title.slice(0, 60), place: it.place, date: it.date, direct: true
     }));
     return { offers };

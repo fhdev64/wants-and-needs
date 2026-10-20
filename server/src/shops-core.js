@@ -19,7 +19,8 @@ const SITES = {
   avito: { url: (q, city) => `https://www.avito.ru/${avitoCity(city)}?q=${q}`, link: '/[a-z_-]+/[a-z_]+/[^/?]+_\\d{6,}', cond: 'used', name: 'Авито' },
   wb:    { url: q => `https://www.wildberries.ru/catalog/0/search.aspx?search=${q}`, link: '/catalog/\\d+/detail\\.aspx', cond: 'new', name: 'Wildberries' },
   ozon:  { url: q => `https://www.ozon.ru/search/?text=${q}&from_global=true`, link: '/product/[^/?]+', cond: 'new', name: 'Ozon' },
-  ym:    { url: q => `https://market.yandex.ru/search?text=${q}`, link: '/(product--|card/)[^?]+', cond: 'new', name: 'Яндекс Маркет' }
+  ym:    { url: q => `https://market.yandex.ru/search?text=${q}`, link: '/(product--|card/)[^?]+', cond: 'new', name: 'Яндекс Маркет' },
+  ali:   { url: q => `https://aliexpress.ru/wholesale?SearchText=${q}&g=y`, link: '/item/\\d+\\.html', cond: 'new', name: 'AliExpress' }
 };
 
 const BLOCK = /доступ ограничен|проблема с ip|капч|captcha|выключите vpn|нет соединения|подтвердите,? что вы|вы не робот|are you human|access denied|too many requests|проверка браузера/i;
@@ -44,7 +45,8 @@ function extractor(linkRe) {
     const img = tile.querySelector('img');
     const place = tile.querySelector('[data-marker="item-address"], [class*="geo"], [class*="address"]')?.innerText?.trim() || '';
     const date = tile.querySelector('[data-marker="item-date"]')?.innerText?.trim() || '';
-    out.push({ title: title.slice(0, 160), price: priceOf(text), url: href, image: img?.currentSrc || img?.src || '', place: place.split('\n')[0].slice(0, 80), date, text: text.slice(0, 400) });
+    const delivery = (lines.find(l => /(доставк|привез|курьер|завтра|послезавтра|сегодня|\d+\s*[–-]\s*\d+\s*дн|\d+\s*дн|с \d+ (янв|фев|мар|апр|мая|июн|июл|авг|сен|окт|ноя|дек))/i.test(l) && l.length < 60) || '').trim();
+    out.push({ title: title.slice(0, 160), price: priceOf(text), url: href, image: img?.currentSrc || img?.src || '', place: place.split('\n')[0].slice(0, 80), date, delivery, text: text.slice(0, 400) });
     if (out.length >= 60) break;
   }
   return out;

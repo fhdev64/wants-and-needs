@@ -20,6 +20,7 @@ const I = {
   minus: '<svg viewBox="0 0 24 24"><path d="M6 12h12"/></svg>',
   shield: '<svg viewBox="0 0 24 24"><path d="M12 3l7 3v5.5c0 4.4-3 8-7 9.5-4-1.5-7-5.1-7-9.5V6z"/><path d="M9 12l2 2 4-4"/></svg>',
   warn: '<svg viewBox="0 0 24 24"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17v.5"/></svg>',
+  truck: '<svg viewBox="0 0 24 24"><path d="M3 6h11v10H3zM14 9h4l3 3.5V16h-7z"/><circle cx="7" cy="17.5" r="1.8"/><circle cx="17.5" cy="17.5" r="1.8"/></svg>',
   pin: '<svg viewBox="0 0 24 24"><path d="M12 21s-6.5-6-6.5-11a6.5 6.5 0 0 1 13 0c0 5-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.3"/></svg>',
   heart: '<svg viewBox="0 0 24 24"><path d="M12 20.5s-7.5-4.6-9.5-9.3C1.1 7.8 3.3 4 7 4c2 0 3.6 1.1 5 3 1.4-1.9 3-3 5-3 3.7 0 5.9 3.8 4.5 7.2-2 4.7-9.5 9.3-9.5 9.3z"/></svg>'
 };
@@ -198,7 +199,7 @@ function summaryHTML() {
   const active = data.items.filter(i => !i.done), done = data.items.length - active.length;
   const total = active.reduce((s, i) => s + (i.minPrice || 0), 0);
   return `<div class="summary">
-    <div><span class="eyebrow">всё вместе от</span><b>${rub(total)}</b></div>
+    <div><span class="eyebrow">всё вместе от</span><b class="count-up" data-to="${total}">${rub(0)}</b></div>
     <div><span class="eyebrow">активных</span><b class="w">${active.length}</b></div>
     <div><span class="eyebrow">исполнено</span><b class="w">${done} <span class="ok">✓</span></b></div>
   </div>`;
@@ -222,6 +223,7 @@ function drawGrid(el) {
     </article>`).join('')}</div>`
     : `<div class="empty">${I.search}<h2>${doneFilter === 'done' && !q ? 'Пока ничего не исполнено' : 'Ничего не найдено'}</h2><p>${doneFilter === 'done' && !q ? 'Отмечайте хотелки исполненными в карточке товара.' : `Нет хотелок по запросу «${esc(filter)}»`}</p></div>`);
   const cnt = k => data.items.filter(i => k === 'all' || (k === 'done') === !!i.done).length;
+  el.querySelectorAll('.count-up').forEach(b => countUp(b, +b.dataset.to));
   $('#doneSeg').append(seg([['active', `Активные<small>${cnt('active')}</small>`], ['done', `Исполненные<small>${cnt('done')}</small>`], ['all', `Все<small>${cnt('all')}</small>`]], doneFilter, k => { doneFilter = k; drawGrid(el); }));
   el.querySelectorAll('.card[data-id]').forEach(c => {
     c.onclick = () => openItem(c.dataset.id);
@@ -246,10 +248,10 @@ function renderAdd(el, tools) {
         </div>
         <div class="bigsearch">${I.search}<input id="q" placeholder="Название: AirPods 4, Dyson V15, Nike Pegasus 41…" value="${esc(add.query)}">${btn('prominent', 'Найти', 'id="go"')}</div>
         <div class="opts">
-          <label class="cityf" title="Город для объявлений и самовывоза">${I.pin}<input id="city" list="cities" placeholder="Вся Россия" value="${esc(city())}" spellcheck="false"></label>
+          <label class="cityf" title="Город для объявлений и самовывоза">${I.pin}<input id="city" placeholder="Вся Россия" value="${esc(city())}" spellcheck="false" autocomplete="off"></label>
           <div id="condSeg"></div>
         </div>
-        <datalist id="cities">${CITIES.map(c => `<option value="${c}">`).join('')}</datalist>
+
       </div>
       <input type="file" id="file" accept="image/*" hidden>`;
   }
@@ -266,7 +268,7 @@ function renderAdd(el, tools) {
   const drop = $('#drop');
   if (drop) {
     $('#condSeg').replaceWith(seg([['any', 'Любой'], ['new', 'Новый'], ['used', 'Б/у'], ['discounted', 'Уценка']], add.cond, k => add.cond = k));
-    $('#city').onchange = e => setCity(e.target.value).then(() => toast(city() ? 'Город: ' + city() : 'Поиск по всей России'));
+    cityPicker($('#city'));
     const file = $('#file');
     drop.onclick = () => file.click();
     drop.onkeydown = e => { if (e.key === 'Enter') file.click(); };
@@ -324,7 +326,7 @@ async function identify() {
 // ---------- progressive search: info + direct site search + AI search, all in parallel ----------
 // direct: real marketplace pages in a hidden browser window; ai: web search via the chosen model
 const GROUPS = [
-  ['avito', 'Авито', 'direct'], ['wb', 'Wildberries', 'direct'], ['ozon', 'Ozon', 'direct'], ['ym', 'Яндекс Маркет', 'direct'],
+  ['avito', 'Авито', 'direct'], ['wb', 'Wildberries', 'direct'], ['ozon', 'Ozon', 'direct'], ['ym', 'Яндекс Маркет', 'direct'], ['ali', 'AliExpress', 'direct'],
   ['retail', 'Магазины', 'ai'], ['used', 'Б/у и уценка', 'ai'], ['market', 'Мегамаркет и др.', 'ai']
 ];
 const city = () => (data.settings.city || '').trim();
@@ -415,10 +417,15 @@ function updateDetail(root, it, state) {
   const minOf = c => { const p = ok.filter(o => matchCond(o, c)).map(o => o.price); return p.length ? Math.min(...p) : null; };
   const rows = [['new', 'Новый от'], ['used', 'Б/у от'], ['discounted', 'Уценка от']].map(([c, l]) => [l, minOf(c)]).filter(([, v]) => v != null);
   slot('range').innerHTML = (rows.length ? rows : [['Цена от', null]]).map(([l, v], i) =>
-    `<div class="r"><span>${l}</span><span class="price big">${rub(v)}</span></div>`).join('')
+    `<div class="r"><span>${l}</span><span class="price big" ${i === 0 && v != null ? `data-to="${v}"` : ''}>${i === 0 && v != null ? (slot('range').querySelector('[data-to]')?.textContent || rub(0)) : rub(v)}</span></div>`).join('')
     + (it.maxPrice != null ? `<div class="r"><span>Самая высокая</span><span class="price">${rub(it.maxPrice)}</span></div>` : '');
-  if (slot('insights') && it.id && data.items.some(i => i.id === it.id)) slot('insights').innerHTML = insightsHTML(it);
+  const mainPrice = slot('range').querySelector('[data-to]');
+  if (mainPrice) { mainPrice.dataset.v = slot('range').dataset.v || 0; countUp(mainPrice, +mainPrice.dataset.to); slot('range').dataset.v = mainPrice.dataset.to; }
+  // don't wipe the target input while the user is typing in it
+  if (slot('insights') && it.id && data.items.some(i => i.id === it.id) && !slot('insights').contains(document.activeElement)) slot('insights').innerHTML = insightsHTML(it);
   slot('insights')?.querySelector('#tSave')?.addEventListener('click', () => saveTarget(it, root, state));
+  slot('insights')?.querySelector('#tInput')?.addEventListener('focus', e => e.target.select());
+  slot('insights')?.querySelector('#tInput')?.addEventListener('keydown', e => { if (e.key === 'Enter') saveTarget(it, root, state); });
   slot('sources').innerHTML = GROUPS.map(([k, l]) => {
     const st = it.status?.[k], n = (it.offers || []).filter(o => o.group === k).length;
     return st === 'loading' ? `<span class="chip"><span class="spinner s"></span>${l}</span>`
@@ -448,6 +455,7 @@ function updateDetail(root, it, state) {
         const near = it.city && o.place.toLowerCase().includes(it.city.toLowerCase());
         tags.push(`<span class="chip ${near ? 'info' : ''}">${I.pin}<span>${esc(o.place)}</span></span>`);
       }
+      if (o.delivery) tags.push(`<span class="chip ship">${I.truck}<span>${esc(o.delivery)}</span></span>`);
       if (o.date) tags.push(`<span class="chip"><span>${esc(o.date)}</span></span>`);
       if (o.note) tags.push(`<span class="chip"><span>${esc(o.note)}</span></span>`);
       return `<div class="row offer" style="--i:${shown.has(k) ? 0 : i}; ${shown.has(k) ? 'animation:none' : ''}" data-k="${esc(k)}" data-url="${esc(o.url)}" role="link" tabindex="0">
@@ -462,11 +470,19 @@ function updateDetail(root, it, state) {
 
   const info = slot('info');
   if (it.infoLoading) info.innerHTML = `<div class="panel-h"><h4>О товаре</h4></div>${'<div class="skel line"></div>'.repeat(4)}`;
-  else if (it.description || it.pros?.length) info.innerHTML = `<div class="panel-h"><h4>О товаре</h4></div>
-    ${it.description ? `<p class="text">${esc(it.description)}</p>` : ''}
-    ${it.specs?.length ? `<dl class="specs">${it.specs.map(([a, b]) => `<dt>${esc(a)}</dt><dd>${esc(b)}</dd>`).join('')}</dl>` : ''}
-    <div class="pc"><div><h5>Плюсы</h5><ul class="pros">${(it.pros || []).map(p => `<li>${I.ok}<span>${esc(p)}</span></li>`).join('')}</ul></div>
-      <div><h5>Минусы</h5><ul class="cons">${(it.cons || []).map(p => `<li>${I.minus}<span>${esc(p)}</span></li>`).join('')}</ul></div></div>`;
+  else if (it.description || it.pros?.length) {
+    if (info.dataset.sig === (it.description || '') + (it.specs || []).length) return;
+    info.dataset.sig = (it.description || '') + (it.specs || []).length;
+    info.innerHTML = `<div class="panel-h"><span class="eyebrow gold">о товаре</span></div>
+    ${it.description ? `<p class="lead">${esc(it.description)}</p>` : ''}
+    ${it.specs?.length ? `<div class="spec-grid">${it.specs.map(([a, b], i) => `<div class="spec" style="--i:${i}"><span class="eyebrow">${esc(a)}</span><b>${esc(b)}</b></div>`).join('')}</div>` : ''}
+    <div class="pc2">
+      <div class="pc-card pros"><div class="pc-h"><span class="pc-ic">${I.ok}</span>Плюсы<em>${(it.pros || []).length}</em></div>
+        <ul>${(it.pros || []).map((p, i) => `<li style="--i:${i}">${esc(p)}</li>`).join('')}</ul></div>
+      <div class="pc-card cons"><div class="pc-h"><span class="pc-ic">${I.minus}</span>Минусы<em>${(it.cons || []).length}</em></div>
+        <ul>${(it.cons || []).map((p, i) => `<li style="--i:${i}">${esc(p)}</li>`).join('')}</ul></div>
+    </div>`;
+  }
   else info.style.display = 'none';
 }
 
@@ -496,6 +512,48 @@ function renderDetailView(el, tools) {
   };
 }
 
+// ---------- city picker: glass popover with search, keyboard and spring animation ----------
+function cityPicker(input) {
+  const pop = document.createElement('div'); pop.className = 'cpop';
+  document.body.append(pop);
+  let items = [], idx = 0;
+  const place = () => { const r = input.closest('.cityf, .field')?.getBoundingClientRect() || input.getBoundingClientRect(); pop.style.left = r.left + 'px'; pop.style.top = (r.bottom + 8) + 'px'; pop.style.width = Math.max(260, r.width) + 'px'; };
+  const draw = () => {
+    const q = input.value.trim().toLowerCase();
+    items = CITIES.filter(c => !q || c.toLowerCase().includes(q) || q === city().toLowerCase()).slice(0, 8);
+    if (q && !CITIES.some(c => c.toLowerCase() === q)) items.push(input.value.trim());
+    idx = Math.min(idx, items.length - 1);
+    pop.innerHTML = items.map((c, i) => `<button data-i="${i}" class="${i === idx ? 'hl' : ''} ${(c === 'Вся Россия' ? !city() : c === city()) ? 'on' : ''}">${I.pin}<span>${esc(c)}${!CITIES.includes(c) ? ' <small style="color:var(--label3)">— свой город</small>' : ''}</span>${(c === 'Вся Россия' ? !city() : c === city()) ? I.ok : ''}</button>`).join('');
+    pop.querySelectorAll('button').forEach(b => b.onmousedown = e => { e.preventDefault(); pick(items[b.dataset.i]); });
+  };
+  const open = () => { place(); idx = 0; draw(); pop.classList.add('open'); };
+  const close = () => pop.classList.remove('open');
+  const pick = async c => {
+    close(); input.value = /^вся россия$/i.test(c) ? '' : c; input.blur();
+    await setCity(c); toast(city() ? 'Город: ' + city() : 'Поиск по всей России');
+  };
+  input.addEventListener('focus', () => { input.select(); open(); });
+  input.addEventListener('input', () => { idx = 0; draw(); });
+  input.addEventListener('blur', () => setTimeout(close, 120));
+  input.addEventListener('keydown', e => {
+    if (e.key === 'ArrowDown') { idx = Math.min(items.length - 1, idx + 1); draw(); e.preventDefault(); }
+    else if (e.key === 'ArrowUp') { idx = Math.max(0, idx - 1); draw(); e.preventDefault(); }
+    else if (e.key === 'Enter' && items[idx]) pick(items[idx]);
+    else if (e.key === 'Escape') { close(); input.blur(); }
+  });
+  new MutationObserver(() => { if (!document.body.contains(input)) { pop.remove(); } }).observe(document.body, { childList: true, subtree: true });
+}
+
+// ---------- smooth number count-up ----------
+function countUp(el, to, ms = 900) {
+  if (!el || to == null) return;
+  const from = +(el.dataset.v || 0); el.dataset.v = to;
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches || from === to) { el.textContent = rub(to); return; }
+  const t0 = performance.now(), ease = t => 1 - Math.pow(1 - t, 4);
+  const step = now => { const t = Math.min(1, (now - t0) / ms); el.textContent = rub(from + (to - from) * ease(t)); if (t < 1) requestAnimationFrame(step); };
+  requestAnimationFrame(step);
+}
+
 // ---------- price history, hint, target price ----------
 function chartSVG(points) {
   if (!points || points.length < 2) return '<div class="chart-empty">История появится после следующей проверки цены</div>';
@@ -505,8 +563,8 @@ function chartSVG(points) {
   const [lx, ly] = xy.at(-1);
   return `<svg class="chart" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
     <defs><linearGradient id="cg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2f5bff" stop-opacity=".45"/><stop offset="1" stop-color="#2f5bff" stop-opacity="0"/></linearGradient></defs>
-    <path d="${line} L ${w} ${h} L 0 ${h} Z" fill="url(#cg)"/><path d="${line}" fill="none" stroke="#a9cbff" stroke-width="2.2" stroke-linejoin="round"/>
-    <circle cx="${lx}" cy="${ly}" r="4" fill="#a9cbff"/></svg>`;
+    <path d="${line} L ${w} ${h} L 0 ${h} Z" fill="url(#cg)"/><path class="ln" pathLength="1000" d="${line}" fill="none" stroke="#a9cbff" stroke-width="2.2" stroke-linejoin="round"/>
+    <circle class="dot" cx="${lx}" cy="${ly}" r="4" fill="#a9cbff"/><circle class="pulse" cx="${lx}" cy="${ly}" r="4" fill="#a9cbff"/></svg>`;
 }
 function insightsHTML(it) {
   const ins = it.insights || {};
@@ -598,15 +656,15 @@ function renderSettings(el) {
     </div>
     <div class="h-section">Поиск</div>
     <div class="frost" style="margin-top:10px">
-      <div class="field"><label for="c2">Город</label><input id="c2" list="cities2" placeholder="Вся Россия" value="${esc(city())}" spellcheck="false"></div>
+      <div class="field"><label for="c2">Город</label><input id="c2" placeholder="Вся Россия" value="${esc(city())}" spellcheck="false" autocomplete="off"></div>
     </div>
-    <datalist id="cities2">${CITIES.map(c => `<option value="${c}">`).join('')}</datalist>
+
     <p class="hint">Объявления Авито ищутся в этом городе, а нейросеть учитывает самовывоз и доставку. Город общий с ботом.</p>
     <div class="h-section">Телеграм-бот</div>
     <p class="hint" style="margin-top:8px">Хотелки общие для бота, Windows и Android. В боте можно просто написать название товара или прислать фото.</p>
     ${btn('', 'Открыть @' + esc(data.settings.bot || 'hotelkinobot'), 'id="openBot"')}
   </div>`;
-  $('#c2').onchange = e => setCity(e.target.value).then(() => toast(city() ? 'Город: ' + city() : 'Поиск по всей России'));
+  cityPicker($('#c2'));
   $('#logout').onclick = () => logout();
   $('#openBot').onclick = () => api.open('https://t.me/' + (data.settings.bot || 'hotelkinobot'));
 }

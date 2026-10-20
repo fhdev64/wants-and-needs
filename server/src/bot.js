@@ -47,7 +47,7 @@ function card(src, { filter = 'all', saved = false } = {}) {
     offers.slice(0, 12).forEach((o, i) => {
       const flags = [o.flags?.includes('cheap') ? '⚠️ подозрительно дёшево' : '', o.flags?.includes('unknown') ? '⚠️ незнакомый сайт' : ''].filter(Boolean).join(', ');
       const name = o.url ? `<a href="${esc(o.url)}">${esc(o.store)}</a>` : esc(o.store);
-      lines.push(`${i + 1}. ${name} — <b>${rub(o.price)}</b> · ${COND[o.condition] || ''}${o.place ? ' · ' + esc(o.place) : ''}${flags ? '\n    ' + flags : ''}`);
+      lines.push(`${i + 1}. ${name} — <b>${rub(o.price)}</b> · ${COND[o.condition] || ''}${o.place ? ' · ' + esc(o.place) : ''}${o.delivery ? '\n    🚚 ' + esc(o.delivery) : ''}${flags ? '\n    ' + flags : ''}`);
     });
   } else if (!loading) lines.push(filter === 'all' ? 'Предложений не нашлось 😔' : 'В этой категории предложений нет.');
   if (src.history?.length) {
