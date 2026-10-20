@@ -1,11 +1,4 @@
-// Direct marketplace search through a hidden Chromium window (real browser, real cookies).
-// Sites that show a captcha / VPN wall are reported as `blocked`; the user can open the
-// same session visibly to pass the check themselves — cookies persist in `persist:shops`.
-const { BrowserWindow } = require('electron');
-
-const PARTITION = 'persist:shops';
-const UA = () => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
-
+// Pure marketplace-search logic shared by every runtime: URLs, in-page extractor, relevance filter.
 const AVITO_CITY = {
   'вся россия': 'rossiya', 'россия': 'rossiya', 'москва': 'moskva', 'санкт-петербург': 'sankt-peterburg', 'спб': 'sankt-peterburg', 'питер': 'sankt-peterburg',
   'новосибирск': 'novosibirsk', 'екатеринбург': 'ekaterinburg', 'казань': 'kazan', 'нижний новгород': 'nizhniy_novgorod', 'челябинск': 'chelyabinsk',
@@ -80,41 +73,5 @@ function relevant(title, query) {
 const condFromText = (t, def) => /уценк|уценён|витрин/i.test(t) ? 'discounted' : /восстановл|refurb/i.test(t) ? 'refurbished'
   : /\bб\/у\b|\bбу\b|был в употреб|подержан/i.test(t) ? 'used' : /\bнов(ый|ые|ая)\b|запечат|не вскрыв/i.test(t) ? 'new' : def;
 
-async function scrape(site, query, city) {
-  const S = SITES[site];
-  const w = new BrowserWindow({ show: false, width: 1366, height: 1000, webPreferences: { partition: PARTITION, backgroundThrottling: false } });
-  w.webContents.setAudioMuted(true);
-  try {
-    w.webContents.loadURL(S.url(encodeURIComponent(query), city), { userAgent: UA() }).catch(() => {});
-    // wait until tiles appear (or a block page), up to 15s; scroll once to trigger lazy loading
-    let items = [], blocked = false;
-    for (let i = 0; i < 30; i++) {
-      await new Promise(r => setTimeout(r, 500));
-      const probe = await w.webContents.executeJavaScript(`(document.title + ' ' + (document.body?.innerText || '').slice(0, 600))`).catch(() => '');
-      if (BLOCK.test(probe)) { blocked = true; break; }
-      if (i === 6) w.webContents.executeJavaScript('window.scrollTo(0, 1600)').catch(() => {});
-      items = await w.webContents.executeJavaScript(`(${extractor})(${JSON.stringify(S.link)})`).catch(() => []);
-      // stop once enough *relevant* priced tiles are rendered (titles load after the tiles themselves)
-      const good = items.filter(it => it.price > 0 && relevant(it.title, query)).length;
-      if (good >= 8 || (good && i > 14) || (items.length && i > 24)) break;
-    }
-    if (blocked) return { blocked: true, url: S.url(encodeURIComponent(query), city) };
-    const offers = items.filter(it => it.price > 0 && relevant(it.title, query)).slice(0, 12).map(it => ({
-      store: S.name, seller: '', title: it.title, price: it.price, url: it.url, image: it.image,
-      condition: condFromText(it.title + ' ' + it.text, S.cond), note: it.title.slice(0, 60), place: it.place, date: it.date, direct: true
-    }));
-    return { offers, scanned: items.length };
-  } finally { w.destroy(); }
-}
 
-// visible window in the same session so the user can pass a captcha / log in themselves
-function verify(site, query, city) {
-  const S = SITES[site];
-  return new Promise(res => {
-    const w = new BrowserWindow({ width: 1200, height: 850, title: 'Проверка — ' + S.name, autoHideMenuBar: true, webPreferences: { partition: PARTITION } });
-    w.loadURL(S.url(encodeURIComponent(query), city), { userAgent: UA() }).catch(() => {});
-    w.on('closed', () => res(true));
-  });
-}
-
-module.exports = { scrape, verify, SITES, relevant, avitoCity };
+module.exports = { SITES, BLOCK, extractor, relevant, condFromText, avitoCity };

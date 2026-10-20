@@ -117,6 +117,17 @@ async function persist() {
   catch (e) { toast('Не удалось сохранить: ' + String(e.message || e).replace(/^Error invoking remote method '[^']+': /, '')); throw e; }
 }
 
+// ---------- server: all wishlist data, search and AI live there ----------
+async function srv(method, path, body) {
+  const r = await api.srv({ method, path, body, token: data.settings.token });
+  if (r.status === 401 && path !== '/auth/poll') { await logout(true); throw new Error('Сессия истекла, войдите снова'); }
+  if (r.status >= 400 || r.status === 0) throw new Error(r.body?.error || 'Сервер недоступен');
+  return r.body;
+}
+async function loadItems() {
+  try { data.items = await srv('GET', '/items'); await persist(); } catch (e) { if (!data.settings.token) return; toast(errText(e)); }
+}
+
 // ---------- segmented control ----------
 function seg(opts, cur, onPick) {
   const w = document.createElement('div'); w.className = 'seg';
@@ -285,7 +296,6 @@ document.addEventListener('paste', e => {
 
 function errText(e) {
   const m = String(e.message || e).replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
-  if (m.includes('NO_KEY')) return 'Не задан API-ключ. Откройте «Настройки» и вставьте ключ любой нейросети.';
   return 'Ошибка: ' + esc(m);
 }
 
@@ -293,7 +303,7 @@ async function identify() {
   if (!add.image && !add.query.trim()) return toast('Загрузите фото или введите название');
   add.loading = true; add.error = null; rerender();
   try {
-    const r = await api.identify({ query: add.query.trim(), image: add.image });
+    const r = await srv('POST', '/identify', { query: add.query.trim(), image: add.image });
     add.candidates = r.candidates || [];
   } catch (e) { add.error = errText(e); }
   add.loading = false; rerender();
@@ -314,6 +324,7 @@ const CITIES = ['Вся Россия', 'Москва', 'Санкт-Петерб�
 async function setCity(v) {
   v = (v || '').trim(); if (/^вся россия$/i.test(v)) v = '';
   data.settings.city = v; data.settings.citySlug = await api.citySlug(v); await persist();
+  srv('PUT', '/me', { city: v }).catch(() => {});
 }
 const SEARCH_LINKS = q => [
   ['Авито', `https://www.avito.ru/${avitoSlug()}?q=${q}`], ['Ozon', `https://www.ozon.ru/search/?text=${q}`],
@@ -322,45 +333,28 @@ const SEARCH_LINKS = q => [
   ['М.Видео', `https://www.mvideo.ru/product-list-page?q=${q}`], ['AliExpress', `https://aliexpress.ru/wholesale?SearchText=${q}`]
 ];
 
-function startSearch(item, onUpdate) {
+// the server runs the search (direct marketplaces + AI); we poll its job and mirror it into the item
+function applyJob(item, j) {
+  Object.assign(item, { jobId: j.id, status: j.status, offers: j.offers, city: j.city,
+    minPrice: j.minPrice, minNew: j.minNew, minUsed: j.minUsed, minDiscounted: j.minDiscounted, maxPrice: j.maxPrice, infoLoading: !j.infoDone });
+  if (j.info) Object.assign(item, { description: j.info.description, pros: j.info.pros || [], cons: j.info.cons || [], specs: j.info.specs || [] });
+  if (!item.image && j.image) item.image = j.image;
+}
+async function pollJob(item, job, onUpdate) {
+  applyJob(item, job); onUpdate();
+  while (!job.done) {
+    await new Promise(r => setTimeout(r, 1500));
+    try { job = await srv('GET', '/search/' + job.id); } catch (e) { item.lastError = errText(e); break; }
+    applyJob(item, job); onUpdate();
+  }
+  return job;
+}
+async function startSearch(item, onUpdate) {
   item.status = Object.fromEntries(GROUPS.map(([k]) => [k, 'loading']));
   item.infoLoading = !item.description;
-  const fresh = [];
-  const merge = () => {
-    // suspicious (likely fakes) go to the end, everything else cheapest first
-    item.offers = annotate(dedupe(fresh)).sort((a, b) => (a.flags.includes('cheap') - b.flags.includes('cheap')) || a.price - b.price);
-    const okOffers = item.offers.filter(o => !o.flags.includes('cheap'));
-    const prices = okOffers.map(o => o.price), newP = okOffers.filter(o => condOf(o) === 'new').map(o => o.price);
-    item.minPrice = newP.length ? Math.min(...newP) : prices.length ? Math.min(...prices) : null;
-    if (!item.image) item.image = item.offers.find(o => /^https:\/\/.+/.test(o.image || ''))?.image || '';
-    item.maxPrice = prices.length ? Math.max(...prices) : null;
-    item.updatedAt = Date.now();
-  };
-  const jobs = [];
-  if (item.infoLoading) jobs.push(api.info({ name: item.name }).then(r => {
-    Object.assign(item, { description: r.description, pros: r.pros || [], cons: r.cons || [], specs: r.specs || [] });
-    if (!item.image && /^https:\/\//.test(r.image || '')) { item.image = r.image; onUpdate('image'); }
-  }).catch(() => {}).finally(() => { item.infoLoading = false; onUpdate('info'); }));
-  const cityNow = city();
-  item.city = cityNow;
-  const addOffers = (g, list) => { fresh.push(...list.filter(o => o.price > 0).map(o => ({ ...o, price: Number(o.price), group: g }))); merge(); };
-  const runGroup = (g, kind) => {
-    item.status[g] = 'loading';
-    if (kind === 'direct') return api.scrape({ site: g, query: item.name, city: cityNow }).then(r => {
-      if (r.blocked) { item.status[g] = 'blocked'; return; }
-      addOffers(g, r.offers || []); item.status[g] = 'done';
-    });
-    return api.offers({ name: item.name, group: g, city: cityNow }).catch(() => api.offers({ name: item.name, group: g, city: cityNow }))
-      .then(r => { addOffers(g, r.offers || []); item.status[g] = 'done'; });
-  };
-  item.retry = g => {
-    const kind = GROUPS.find(x => x[0] === g)[2];
-    const p = runGroup(g, kind).catch(e => { item.status[g] = 'error'; item.lastError = errText(e); }).finally(() => onUpdate('offers'));
-    onUpdate('offers'); return p;
-  };
-  for (const [g, , kind] of GROUPS) jobs.push(runGroup(g, kind)
-    .catch(e => { item.status[g] = 'error'; item.lastError = errText(e); }).finally(() => onUpdate('offers')));
-  return Promise.all(jobs).then(() => { if (!fresh.length && item.prevOffers) item.offers = item.prevOffers; });
+  onUpdate();
+  try { return await pollJob(item, await srv('POST', '/search', { name: item.name, city: city() }), onUpdate); }
+  catch (e) { item.status = Object.fromEntries(GROUPS.map(([k]) => [k, 'error'])); item.lastError = errText(e); item.infoLoading = false; onUpdate(); }
 }
 
 function choose(c) {
@@ -413,17 +407,10 @@ function updateDetail(root, it, state) {
   slot('sources').innerHTML = GROUPS.map(([k, l]) => {
     const st = it.status?.[k], n = (it.offers || []).filter(o => o.group === k).length;
     return st === 'loading' ? `<span class="chip"><span class="spinner s"></span>${l}</span>`
-      : st === 'error' ? `<button class="chip bad" data-retry="${k}" title="${esc(it.lastError || '')} — нажмите, чтобы повторить">${I.refresh}${l}</button>`
-      : st === 'blocked' ? `<button class="chip warn" data-verify="${k}" title="Площадка просит проверку (капча или VPN). Нажмите, пройдите проверку в открывшемся окне и закройте его.">${I.warn}${l}: пройти проверку</button>`
+      : st === 'error' ? `<span class="chip bad" title="${esc(it.lastError || '')}">${I.warn}${l}</span>`
+      : st === 'blocked' ? `<span class="chip warn" title="Площадка не пустила сервер (капча/антибот). Откройте её кнопкой ниже.">${I.warn}${l}: недоступно</span>`
       : st === 'done' ? `<span class="chip ${n ? 'good' : ''}">${n ? I.ok : I.minus}${l} · ${n}</span>` : '';
   }).join('');
-  slot('sources').querySelectorAll('[data-retry]').forEach(b => b.onclick = () => it.retry?.(b.dataset.retry));
-  slot('sources').querySelectorAll('[data-verify]').forEach(b => b.onclick = async () => {
-    toast('Пройдите проверку в окне и закройте его');
-    await api.verify({ site: b.dataset.verify, query: it.name, city: it.city || city() });
-    it.retry?.(b.dataset.verify);
-  });
-
   // filter control: built once, counts refreshed
   const counts = Object.fromEntries(COND_FILTERS.map(([k]) => [k, (it.offers || []).filter(o => matchCond(o, k)).length]));
   const f = slot('filter');
@@ -482,11 +469,15 @@ function renderDetailView(el, tools) {
   box.innerHTML = btn('prominent big', exists ? I.ok + 'Уже в хотелках' : I.plus + 'Добавить в хотелки');
   const a = box.firstChild; a.disabled = exists;
   a.onclick = async () => {
-    // keep the live object so offers still arriving land in the saved item
-    it.addedAt = Date.now(); data.items.push(it); await persist();
-    a.disabled = true; a.innerHTML = I.ok + 'Добавлено';
-    toast('Добавлено в хотелки — цены продолжают загружаться');
-    const save = setInterval(() => { persist(); if (!Object.values(it.status || {}).includes('loading')) clearInterval(save); }, 3000);
+    if (!it.jobId) return toast('Подождите, поиск ещё запускается');
+    a.disabled = true;
+    try {
+      // the server keeps filling the saved item while the search is still running
+      const saved = await srv('POST', '/items', { jobId: it.jobId, brand: it.brand, category: it.category, image: it.image });
+      data.items.unshift(saved); await persist();
+      a.innerHTML = I.ok + 'Добавлено';
+      toast('Добавлено в хотелки — цены продолжают загружаться');
+    } catch (e) { a.disabled = false; toast(errText(e)); }
   };
 }
 
@@ -504,89 +495,106 @@ function openItem(id) {
       <div class="group lg lg-clear" data-lens="999"><button class="icon-btn" id="mClose" aria-label="Закрыть" title="Закрыть">${I.close}</button></div>
     </div>` + detailHTML(it);
   wireLinks(s);
-  if (!it.offers?.[0]?.flags) it.offers = annotate(it.offers || []);
   updateDetail(s, it, sheetState);
   s.querySelector('[data-slot="actions"]').innerHTML = `<div style="color:var(--label2);font-size:12px;text-align:center">Обновлено ${new Date(it.updatedAt || it.addedAt).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}</div>`;
   $('#sheet').classList.add('open');
   $('#mClose').onclick = closeSheet;
-  $('#mDel').onclick = async () => { data.items = data.items.filter(i => i.id !== id); await persist(); closeSheet(); rerender(); toast('Удалено'); };
-  $('#mRefresh').onclick = async () => {
-    it.prevOffers = it.offers; it.offers = [];
-    const done = startSearch(it, () => { if (sheetState.id === id) updateDetail(s, it, sheetState); });
-    updateDetail(s, it, sheetState);
-    await done; delete it.prevOffers; await persist(); render(); toast('Цены обновлены');
+  $('#mDel').onclick = async () => {
+    try { await srv('DELETE', '/items/' + id); } catch (e) { return toast(errText(e)); }
+    data.items = data.items.filter(i => i.id !== id); await persist(); closeSheet(); rerender(); toast('Удалено');
+  };
+  $('#mRefresh').onclick = async e => {
+    const b = e.currentTarget; b.disabled = true; b.style.animation = 'spin 1s linear infinite';
+    try {
+      const job = await srv('POST', `/items/${id}/refresh`);
+      await pollJob(it, job, () => { if (sheetState.id === id) updateDetail(s, it, sheetState); });
+      await loadItems(); render(); toast('Цены обновлены');
+    } catch (err) { toast(errText(err)); }
+    b.disabled = false; b.style.animation = '';
   };
 }
 function closeSheet() { $('#sheet').classList.remove('open'); sheetState.id = null; }
 $('#sheet').onclick = e => e.target.id === 'sheet' && closeSheet();
 
-// ---------- settings ----------
-const PROV = [
-  ['auto', 'Авто (по ключу)', ''],
-  ['anthropic', 'Anthropic Claude', 'claude-sonnet-5-5'],
-  ['openai', 'OpenAI', 'gpt-5'],
-  ['gemini', 'Google Gemini', 'gemini-2.5-flash'],
-  ['openrouter', 'OpenRouter', 'google/gemini-2.5-flash'],
-  ['perplexity', 'Perplexity', 'sonar-pro'],
-  ['codex', 'Codex (codexapi.work)', 'самая быстрая доступная'],
-  ['custom', 'Свой (OpenAI-совместимый)', '']
-];
-function detectProv(k) {
-  k = k.trim(); if (!k) return null;
-  return k.startsWith('sk-ant-') ? 'anthropic' : k.startsWith('sk-or-') ? 'openrouter' : k.startsWith('pplx-') ? 'perplexity' : k.startsWith('AIza') ? 'gemini' : 'openai';
-}
+// ---------- account ----------
 function renderSettings(el) {
-  const s = data.settings;
+  const u = data.settings.user || {};
   el.innerHTML = `<div class="form">
-    <div class="h-section" style="margin-top:0">Нейросеть для поиска</div>
-    <div class="frost" style="margin:10px 0 0">
-      <div class="field"><label for="p">Провайдер</label><select id="p">${PROV.map(([v, l]) => `<option value="${v}" ${(s.provider || 'auto') === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
-      <div class="field"><label for="k">API-ключ</label><input id="k" type="password" spellcheck="false" placeholder="sk-…, AIza…, sk-or-…" value="${esc(s.apiKey || '')}"></div>
-      <div class="field"><label for="m">Модель</label><input id="m" list="mlist" spellcheck="false" value="${esc(s.provider ? s.model || '' : '')}"></div>
-      <div class="field" id="urlRow"><label for="u">Base URL</label><input id="u" spellcheck="false" value="${esc(s.baseUrl || '')}"></div>
+    <div class="frost account">
+      <div class="avatar">${esc((u.name || u.username || '?').trim()[0]?.toUpperCase())}</div>
+      <div class="who"><b>${esc(u.name || 'Пользователь')}</b><span>${u.username ? '@' + esc(u.username) + ' · ' : ''}Telegram</span></div>
+      ${btn('', 'Выйти', 'id="logout"')}
     </div>
-    <datalist id="mlist"></datalist>
-    <p class="hint" id="hint"></p>
-    ${btn('prominent', 'Сохранить', 'id="save"')}
+    <div class="h-section">Поиск</div>
+    <div class="frost" style="margin-top:10px">
+      <div class="field"><label for="c2">Город</label><input id="c2" list="cities2" placeholder="Вся Россия" value="${esc(city())}" spellcheck="false"></div>
+    </div>
+    <datalist id="cities2">${CITIES.map(c => `<option value="${c}">`).join('')}</datalist>
+    <p class="hint">Объявления Авито ищутся в этом городе, а нейросеть учитывает самовывоз и доставку. Город общий с ботом.</p>
+    <div class="h-section">Телеграм-бот</div>
+    <p class="hint" style="margin-top:8px">Хотелки общие для бота, Windows и Android. В боте можно просто написать название товара или прислать фото.</p>
+    ${btn('', 'Открыть @' + esc(data.settings.bot || 'hotelkinobot'), 'id="openBot"')}
   </div>`;
-  const P = $('#p'), K = $('#k'), M = $('#m');
-  const sync = () => {
-    const prov = P.value === 'auto' ? detectProv(K.value) : P.value;
-    const def = PROV.find(x => x[0] === prov)?.[2] || '';
-    M.placeholder = def ? 'По умолчанию: ' + def : 'Название модели';
-    $('#urlRow').style.display = P.value === 'custom' || P.value === 'codex' ? '' : 'none';
-    $('#u').placeholder = P.value === 'codex' ? 'https://codexapi.work/backend-api/codex' : 'https://api.example.com/v1';
-    $('#hint').innerHTML = (P.value === 'auto' && prov ? `Определён провайдер: <b>${PROV.find(x => x[0] === prov)[1]}</b>. ` : '') +
-      ({ custom: 'Любой OpenAI-совместимый API (Groq, DeepSeek, Mistral, LM Studio, Ollama…). Без веб-поиска цены будут неточными.',
-         codex: 'Codex backend. Адрес можно не указывать. По умолчанию выбирается самая быстрая доступная модель.',
-         perplexity: 'Perplexity ищет в интернете сам — хорошо подходит для цен.',
-         openrouter: 'Для поиска цен к модели добавляется :online — веб-поиск.' }[prov] ||
-       'Цены ищутся через встроенный веб-поиск провайдера.') + ' Ключ хранится только на этом компьютере.';
-  };
-  const loadModels = async () => {
-    const prov = P.value === 'auto' ? detectProv(K.value) : P.value;
-    $('#mlist').innerHTML = '';
-    if (prov !== 'codex' || !K.value.trim()) return;
-    const list = await api.codexModels({ base: $('#u').value.trim(), key: K.value.trim() });
-    $('#mlist').innerHTML = list.map(m => `<option value="${esc(m)}">`).join('');
-  };
-  P.onchange = () => { sync(); loadModels(); }; K.oninput = sync; K.onchange = loadModels;
-  sync(); loadModels();
-  $('#save').onclick = async () => {
-    data.settings = { provider: P.value, apiKey: K.value.trim(), model: M.value.trim(), baseUrl: $('#u').value.trim() };
-    await persist(); toast('Сохранено');
-  };
+  $('#c2').onchange = e => setCity(e.target.value).then(() => toast(city() ? 'Город: ' + city() : 'Поиск по всей России'));
+  $('#logout').onclick = () => logout();
+  $('#openBot').onclick = () => api.open('https://t.me/' + (data.settings.bot || 'hotelkinobot'));
+}
+
+// ---------- login via Telegram bot ----------
+let loginPoll = null;
+function showLogin() {
+  document.body.classList.add('signed-out');
+  $('#login').innerHTML = `<div class="login-card frost">
+      <div class="login-logo">${I.heart}</div>
+      <h1>Хотелки</h1>
+      <p>Список желаний и лучшие цены<br>на Авито, Ozon, WB и в магазинах</p>
+      <button class="tg-btn" id="tgLogin"><svg viewBox="0 0 24 24"><path d="M21.5 4.5 2.9 11.7c-1 .4-1 1.7.1 2l4.6 1.5 1.8 5.6c.3.8 1.3 1 1.9.4l2.6-2.5 4.9 3.6c.7.5 1.7.1 1.9-.7l3.2-15c.2-1.1-.8-1.9-1.8-1.5zM9.6 14.6l-.6 4-1.5-4.7 10.3-6.5z"/></svg>Войти через Telegram</button>
+      <div class="login-wait" id="wait" hidden><span class="spinner s"></span><span>Подтвердите вход в боте — Telegram уже открыт</span></div>
+      <small>Откроется бот <b>@${esc(data.settings.bot || 'hotelkinobot')}</b> — нажмите в нём «Войти».<br>Хотелки будут общими для бота, компьютера и телефона.</small>
+    </div>`;
+  $('#tgLogin').onclick = startLogin;
+}
+async function startLogin() {
+  const b = $('#tgLogin'); b.disabled = true;
+  try {
+    const r = await srv('POST', '/auth/start', { device: 'Windows' });
+    data.settings.bot = r.bot;
+    api.open(r.url);
+    $('#wait').hidden = false;
+    clearInterval(loginPoll);
+    const until = Date.now() + r.expiresIn * 1000;
+    loginPoll = setInterval(async () => {
+      if (Date.now() > until) { clearInterval(loginPoll); b.disabled = false; $('#wait').hidden = true; return toast('Время вышло, попробуйте ещё раз'); }
+      const p = await srv('GET', '/auth/poll?code=' + r.code).catch(() => null);
+      if (p?.status === 'ok') {
+        clearInterval(loginPoll);
+        Object.assign(data.settings, { token: p.token, user: p.user, city: p.user.city || '' });
+        data.settings.citySlug = await api.citySlug(data.settings.city);
+        await persist(); enterApp(); toast('Привет, ' + (p.user.name || 'друг') + '!');
+      }
+    }, 2000);
+  } catch (e) { b.disabled = false; toast(errText(e)); }
+}
+async function logout(expired) {
+  if (!expired) await srv('POST', '/auth/logout').catch(() => {});
+  data = { items: [], settings: { bot: data.settings.bot } };
+  await persist(); showLogin();
+  if (expired) toast('Войдите снова');
+}
+async function enterApp() {
+  document.body.classList.remove('signed-out');
+  view = 'list';
+  document.querySelectorAll('.nav [data-view]').forEach(b => b.classList.toggle('active', b.dataset.view === view));
+  movePill(); render();
+  await loadItems(); if (view === 'list') render();
+  srv('GET', '/me').then(u => { data.settings.user = u; data.settings.bot = u.bot; if ((u.city || '') !== city()) setCity(u.city); }).catch(() => {});
 }
 
 // ---------- boot ----------
 (async () => {
   data = await api.getData();
   data.items ||= []; data.settings ||= {};
-  // a search interrupted by closing the app must not leave spinners forever
-  for (const it of data.items) for (const k in it.status || {}) if (it.status[k] === 'loading') delete it.status[k];
   $('#count').textContent = data.items.length || '';
-  view = data.settings.apiKey ? 'list' : 'settings';
-  document.querySelectorAll('.nav [data-view]').forEach(b => b.classList.toggle('active', b.dataset.view === view));
-  movePill(); render();
   addEventListener('resize', () => { pillY = null; movePill(); });
+  if (data.settings.token) enterApp(); else showLogin();
 })();

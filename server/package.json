@@ -1,0 +1,19 @@
+{
+  "name": "hotelki-server",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Сервер «Хотелок»: Telegram-бот, аккаунты, поиск товаров и цен",
+  "main": "src/index.js",
+  "engines": {
+    "node": ">=22.5"
+  },
+  "scripts": {
+    "start": "node --no-warnings src/index.js"
+  },
+  "dependencies": {
+    "puppeteer": "^23.11.1"
+  },
+  "allowScripts": {
+    "puppeteer@23.11.1": true
+  }
+}

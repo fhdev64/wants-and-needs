@@ -14,7 +14,7 @@
     "files": [
       "main.js",
       "preload.js",
-      "scrape.js",
+      "server/src/shops-core.js",
       "src/**/*"
     ],
     "win": {
@@ -33,5 +33,8 @@
   },
   "allowScripts": {
     "electron@33.4.11": true
+  },
+  "hotelki": {
+    "server": "http://localhost:8787"
   }
 }
