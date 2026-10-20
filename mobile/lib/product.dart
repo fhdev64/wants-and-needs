@@ -383,6 +383,7 @@ class _ProductScreenState extends State<ProductScreen> {
             ),
           ],
         ),
+        const ScrollEdge(),
         if (showAdd)
           Positioned(
             left: 16,
@@ -478,30 +479,30 @@ class _OfferRow extends StatelessWidget {
     final url = (o['url'] ?? '') as String;
     final place = (o['place'] ?? '') as String;
     final near = city.isNotEmpty && place.toLowerCase().contains(city.toLowerCase());
+    final note = (o['note'] ?? '').toString();
     return Press(
       scale: .98,
       onTap: url.isEmpty ? null : () => launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 14),
         decoration: const BoxDecoration(border: Border(top: BorderSide(color: C.sep))),
-        child: Row(children: [
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(o['store'] ?? '', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-              const SizedBox(height: 6),
-              Wrap(spacing: 6, runSpacing: 6, children: [
-                Tag(kCondName[o['condition']] ?? 'Новый'),
-                if ((o['host'] ?? '').toString().isNotEmpty && !flags.contains('unknown')) Tag(o['host'], icon: Icons.verified_user_rounded, color: C.green),
-                if (flags.contains('unknown')) Tag('Незнакомый сайт', icon: Icons.warning_amber_rounded, color: C.orange),
-                if (flags.contains('cheap')) const Tag('Подозрительно дёшево', icon: Icons.warning_amber_rounded, color: C.red),
-                if (place.isNotEmpty) Tag(place, icon: Icons.place_rounded, color: near ? C.teal : null),
-                if ((o['note'] ?? '').toString().isNotEmpty) ConstrainedBox(constraints: const BoxConstraints(maxWidth: 220), child: Tag(o['note'])),
-              ]),
-            ]),
-          ),
-          const SizedBox(width: 10),
-          PriceCapsule(o['price'] as num?, best: best, dim: flags.contains('cheap')),
-          if (url.isNotEmpty) const Icon(Icons.chevron_right_rounded, color: C.label3),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          // line 1: store + price, so the price never fights the tags for width
+          Row(children: [
+            Expanded(child: Text(o['store'] ?? '', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 16.5, fontWeight: FontWeight.w700))),
+            const SizedBox(width: 10),
+            PriceCapsule(o['price'] as num?, best: best, dim: flags.contains('cheap')),
+            if (url.isNotEmpty) const Icon(Icons.chevron_right_rounded, color: C.label3),
+          ]),
+          if (note.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 4, right: 30), child: Text(note, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13.5, color: C.label2, height: 1.35))),
+          const SizedBox(height: 8),
+          Wrap(spacing: 6, runSpacing: 6, children: [
+            Tag(kCondName[o['condition']] ?? 'Новый'),
+            if ((o['host'] ?? '').toString().isNotEmpty && !flags.contains('unknown')) Tag(o['host'], icon: Icons.verified_user_rounded, color: C.green),
+            if (flags.contains('unknown')) const Tag('Незнакомый сайт', icon: Icons.warning_amber_rounded, color: C.orange),
+            if (flags.contains('cheap')) const Tag('Подозрительно дёшево', icon: Icons.warning_amber_rounded, color: C.red),
+            if (place.isNotEmpty) Tag(place, icon: Icons.place_rounded, color: near ? C.teal : null),
+          ]),
         ]),
       ),
     );

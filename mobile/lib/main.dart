@@ -47,7 +47,7 @@ class _HotelkiAppState extends State<HotelkiApp> {
         highlightColor: Colors.transparent,
         textTheme: ThemeData.dark().textTheme.apply(bodyColor: C.label, displayColor: C.label),
       ),
-      builder: (context, child) => Wallpaper(child: child!),
+      builder: (context, child) => MediaQuery.withClampedTextScaling(maxScaleFactor: 1.25, child: Wallpaper(child: child!)),
       home: AnimatedSwitcher(
         duration: const Duration(milliseconds: 500),
         child: Api.i.token == null ? LoginScreen(key: const ValueKey('login'), onDone: () => setState(() {})) : HomeScreen(key: const ValueKey('home'), onLogout: () => setState(() {})),
@@ -214,9 +214,12 @@ class _HomeScreenState extends State<HomeScreen> {
     final bottom = MediaQuery.paddingOf(context).bottom;
     return Scaffold(
       extendBody: true,
-      body: IndexedStack(index: _tab, children: [
-        WishlistScreen(key: _listKey, onAdd: _openAdd),
-        ProfileScreen(onLogout: widget.onLogout),
+      body: Stack(children: [
+        IndexedStack(index: _tab, children: [
+          WishlistScreen(key: _listKey, onAdd: _openAdd),
+          ProfileScreen(onLogout: widget.onLogout),
+        ]),
+        const ScrollEdge(),
       ]),
       bottomNavigationBar: Padding(
         padding: EdgeInsets.fromLTRB(20, 0, 20, bottom + 14),
@@ -242,10 +245,12 @@ class _HomeScreenState extends State<HomeScreen> {
                       bottom: 0,
                       child: Container(decoration: BoxDecoration(color: const Color(0x24FFFFFF), borderRadius: BorderRadius.circular(26), border: const Border(top: BorderSide(color: Color(0x40FFFFFF), width: .8)))),
                     ),
-                    Row(children: [
-                      _tabBtn(0, Icons.favorite_rounded, 'Хотелки'),
-                      _tabBtn(1, Icons.person_rounded, 'Профиль'),
-                    ]),
+                    Positioned.fill(
+                      child: Row(children: [
+                        _tabBtn(0, Icons.favorite_rounded, 'Хотелки'),
+                        _tabBtn(1, Icons.person_rounded, 'Профиль'),
+                      ]),
+                    ),
                   ]);
                 }),
               ),
@@ -279,10 +284,10 @@ class _HomeScreenState extends State<HomeScreen> {
             HapticFeedback.selectionClick();
             setState(() => _tab = i);
           },
-          child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          child: Row(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.center, children: [
             Icon(icon, size: 22, color: _tab == i ? C.label : C.label2),
             const SizedBox(width: 8),
-            Text(label, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: _tab == i ? C.label : C.label2)),
+            Flexible(child: Text(label, maxLines: 1, overflow: TextOverflow.fade, softWrap: false, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: _tab == i ? C.label : C.label2))),
           ]),
         ),
       );
@@ -391,9 +396,16 @@ class WishlistScreenState extends State<WishlistScreen> {
           else
             SliverPadding(
               padding: EdgeInsets.fromLTRB(16, 12, 16, 120 + MediaQuery.paddingOf(context).bottom),
-              sliver: SliverGrid(
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, mainAxisSpacing: 14, crossAxisSpacing: 14, childAspectRatio: .66),
-                delegate: SliverChildBuilderDelegate((_, i) => _ItemCard(item: items[i], index: i, onChanged: reload), childCount: items.length),
+              sliver: SliverList.separated(
+                itemCount: (items.length + 1) ~/ 2,
+                separatorBuilder: (_, __) => const SizedBox(height: 14),
+                itemBuilder: (_, r) => IntrinsicHeight(
+                  child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                    Expanded(child: _ItemCard(item: items[r * 2], index: r * 2, onChanged: reload)),
+                    const SizedBox(width: 14),
+                    Expanded(child: r * 2 + 1 < items.length ? _ItemCard(item: items[r * 2 + 1], index: r * 2 + 1, onChanged: reload) : const SizedBox()),
+                  ]),
+                ),
               ),
             ),
         ],
@@ -435,7 +447,8 @@ class _ItemCard extends StatelessWidget {
               child: Text(n > 0 ? '$n ${plural(n, 'предложение', 'предложения', 'предложений')}' : (item['brand'] ?? ''), maxLines: 1, style: const TextStyle(fontSize: 12.5, color: C.label2)),
             ),
             const Spacer(),
-            PriceCapsule(item['minPrice'] as num?, prefix: 'от'),
+            const SizedBox(height: 12),
+            FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: PriceCapsule(item['minPrice'] as num?, prefix: 'от')),
           ]),
         ),
       ),

@@ -257,16 +257,16 @@ class PriceCapsule extends StatelessWidget {
         child: Container(
           height: big ? 40 : 34,
           padding: EdgeInsets.symmetric(horizontal: big ? 16 : 13),
-          alignment: Alignment.center,
           decoration: BoxDecoration(
             color: best ? C.green.withValues(alpha: .2) : const Color(0x1FFFFFFF),
             borderRadius: BorderRadius.circular(40),
             border: const Border(top: BorderSide(color: Color(0x26FFFFFF), width: .8)),
           ),
-          child: Text.rich(TextSpan(children: [
+          // widthFactor 1: hug the content instead of stretching inside Wrap/Column
+          child: Center(widthFactor: 1, child: Text.rich(TextSpan(children: [
             if (prefix != null) TextSpan(text: '$prefix ', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: C.label2)),
             TextSpan(text: rub(value), style: TextStyle(fontSize: big ? 18 : 15.5, fontWeight: FontWeight.w700, color: best ? const Color(0xFF86F59A) : C.label, fontFeatures: const [FontFeature.tabularFigures()])),
-          ])),
+          ]))),
         ),
       );
 }
@@ -434,3 +434,30 @@ Route<T> glassRoute<T>(Widget page) => PageRouteBuilder<T>(
         return FadeTransition(opacity: c, child: SlideTransition(position: Tween(begin: const Offset(.12, 0), end: Offset.zero).animate(c), child: child));
       },
     );
+
+/// iOS-like scroll edge: content scrolling under the status bar gets blurred and dimmed
+class ScrollEdge extends StatelessWidget {
+  const ScrollEdge({super.key});
+  @override
+  Widget build(BuildContext context) {
+    final h = MediaQuery.paddingOf(context).top + 18;
+    return Positioned(
+      top: 0,
+      left: 0,
+      right: 0,
+      height: h,
+      child: IgnorePointer(
+        child: ShaderMask(
+          shaderCallback: (r) => const LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.black, Colors.black, Colors.transparent], stops: [0, .6, 1]).createShader(r),
+          blendMode: BlendMode.dstIn,
+          child: ClipRect(
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+              child: Container(color: const Color(0x8C0B1016)),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}

@@ -32,6 +32,9 @@ class Api {
   Future<void> load() async {
     final p = await SharedPreferences.getInstance();
     token = p.getString('token');
+    // test builds only: --dart-define=DEV_TOKEN=... skips the Telegram login
+    const devToken = String.fromEnvironment('DEV_TOKEN');
+    if (token == null && devToken.isNotEmpty) token = devToken;
     city = p.getString('city') ?? '';
     final u = p.getString('user');
     if (u != null) user = jsonDecode(u) as Json;
