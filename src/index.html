@@ -11,47 +11,44 @@
 <!-- per-element lens filters are injected here by glass.js -->
 <svg id="lensDefs" width="0" height="0" style="position:absolute" aria-hidden="true"></svg>
 
-<!-- content layer -->
-<div class="wallpaper" aria-hidden="true"><i class="b1"></i><i class="b2"></i><i class="b3"></i><i class="b4"></i></div>
+<div class="wallpaper" aria-hidden="true"></div>
 
-<main class="content" id="content">
-  <section class="view" id="view"></section>
-</main>
+<!-- top bar: brand · tabs · window controls (the whole bar drags the window) -->
+<header class="topnav drag">
+  <div class="brand"><span class="brand-mark">✦</span>хотелкино</div>
 
-<!-- Liquid Glass functional layer -->
-<aside class="sidebar lg lg-regular" data-lens="18">
-  <div class="titlebar drag">
-    <div class="lights no-drag">
-      <button class="l close" data-w="close" aria-label="Закрыть"></button>
-      <button class="l min" data-w="min" aria-label="Свернуть"></button>
-      <button class="l max" data-w="max" aria-label="Развернуть"></button>
-    </div>
-  </div>
-
-  <nav class="nav" aria-label="Разделы">
-    <div class="nav-pill lg lg-clear" data-lens="10"></div>
+  <nav class="nav no-drag" aria-label="Разделы">
+    <div class="nav-pill"></div>
     <button class="nav-btn" data-view="list">
       <svg viewBox="0 0 24 24"><path d="M12 20.5s-7.5-4.6-9.5-9.3C1.1 7.8 3.3 4 7 4c2 0 3.6 1.1 5 3 1.4-1.9 3-3 5-3 3.7 0 5.9 3.8 4.5 7.2-2 4.7-9.5 9.3-9.5 9.3z"/></svg>
-      <span>Мои хотелки</span><em id="count">0</em>
+      <span>Хотелки</span><em id="count"></em>
     </button>
     <button class="nav-btn" data-view="add">
-      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg>
+      <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
       <span>Добавить</span>
     </button>
     <button class="nav-btn" data-view="settings">
-      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1"/></svg>
-      <span>Настройки</span>
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 20.5c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>
+      <span>Профиль</span>
     </button>
   </nav>
 
-  <div class="side-foot">хотелкино ✦︎ 3.0</div>
-</aside>
-
-<header class="toolbar drag">
-  <div class="scroll-edge" aria-hidden="true"></div>
-  <h1 id="title">Мои хотелки</h1>
-  <div class="tools no-drag" id="tools"></div>
+  <div class="winctl no-drag">
+    <button data-w="min" aria-label="Свернуть"><svg viewBox="0 0 24 24"><path d="M6 12h12"/></svg></button>
+    <button data-w="max" aria-label="Развернуть"><svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></svg></button>
+    <button data-w="close" class="close" aria-label="Закрыть"><svg viewBox="0 0 24 24"><path d="M7 7l10 10M17 7 7 17"/></svg></button>
+  </div>
 </header>
+
+<main class="content" id="content">
+  <div class="page">
+    <header class="toolbar">
+      <h1 id="title"></h1>
+      <div class="tools" id="tools"></div>
+    </header>
+    <section class="view" id="view"></section>
+  </div>
+</main>
 
 <div class="login drag" id="login"></div>
 <div class="sheet-wrap" id="sheet"><div class="sheet lg lg-regular" data-lens="28" id="sheetBody" role="dialog" aria-modal="true"></div></div>

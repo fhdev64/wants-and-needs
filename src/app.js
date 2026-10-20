@@ -75,21 +75,18 @@ document.addEventListener('keydown', e => {
   if (e.ctrlKey && e.key.toLowerCase() === 'f' && view === 'list') { e.preventDefault(); $('#filter')?.focus(); }
   if (e.key === 'Escape') { closeMenu(); closeSheet(); }
 });
-$('#content').addEventListener('scroll', e => $('.toolbar').classList.toggle('scrolled', e.target.scrollTop > 4), { passive: true });
+
 
 // nav selection: a droplet that stretches toward its target, then settles
-let pillY = null;
+// tab selection: the pill slides under the active tab
 function movePill() {
   const a = document.querySelector('.nav .nav-btn.active'), pill = $('.nav-pill');
   if (!a) { pill.style.opacity = 0; return; }
-  const y = a.offsetTop, h = a.offsetHeight;
   pill.style.opacity = 1;
-  if (pillY == null || pillY === y) { pill.style.transform = `translateY(${y}px)`; pill.style.height = h + 'px'; pillY = y; return; }
-  pill.style.transform = `translateY(${Math.min(pillY, y)}px)`; pill.style.height = Math.abs(pillY - y) + h + 'px';
-  pillY = y;
-  clearTimeout(movePill.t);
-  movePill.t = setTimeout(() => { pill.style.transform = `translateY(${y}px)`; pill.style.height = h + 'px'; }, 160);
+  pill.style.transform = `translateX(${a.offsetLeft}px)`;
+  pill.style.width = a.offsetWidth + 'px';
 }
+let pillY = null;
 
 // smooth cross-fade between screens
 function transition(fn) {
@@ -159,7 +156,7 @@ function render() {
   tools.innerHTML = '';
   if (view === 'list') { $('#title').innerHTML = '<span class="eyebrow gold">хотелкино ✦</span>Мои хотелки'; renderList(el, tools); }
   else if (view === 'add') { $('#title').textContent = add.item ? 'Товар' : 'Новая хотелка'; renderAdd(el, tools); }
-  else { $('#title').textContent = 'Настройки'; renderSettings(el); }
+  else { $('#title').textContent = 'Профиль'; renderSettings(el); }
 }
 
 function media(src, name) {
@@ -206,7 +203,7 @@ function drawGrid(el) {
     <article class="card frost" style="--i:${i}" data-id="${it.id}" tabindex="0">
       <div style="position:relative">${media(it.image || it.userImage, it.name)}${it.offers?.length ? `<span class="count">${it.offers.length} ПРЕДЛ.</span>` : ''}</div>
       <div class="body">
-        <span class="eyebrow brand">${esc(it.brand || 'товар')}</span>
+        <span class="eyebrow ebrand">${esc(it.brand || 'товар')}</span>
         <h3>${esc(it.name)}</h3>
         <div class="foot"><span class="price"><small>от&nbsp;</small>${rub(it.minPrice)}</span></div>
       </div>
@@ -246,7 +243,7 @@ function renderAdd(el, tools) {
   if (add.loading) html += `<div class="loader"><span class="spinner"></span><div>Подбираю варианты…</div></div><div class="cand-grid">${'<div class="skel"></div>'.repeat(4)}</div>`;
   if (add.candidates && !add.loading) {
     html += `<div class="h-section">Выберите подходящий товар</div><div class="h-sub">Цены начнём собирать сразу после выбора</div><div class="cand-grid">` +
-      add.candidates.map((c, i) => `<article class="card frost" style="--i:${i}" data-i="${i}" tabindex="0">${media(c.image, c.name)}<div class="body"><span class="eyebrow brand">${esc([c.brand, c.category].filter(Boolean).join(' · ') || 'товар')}</span><h3>${esc(c.name)}</h3><div class="sub">${esc(c.summary || '')}</div><div class="foot"><span class="chip"><span>${esc(c.category || c.brand || 'Товар')}</span></span></div></div></article>`).join('') +
+      add.candidates.map((c, i) => `<article class="card frost" style="--i:${i}" data-i="${i}" tabindex="0">${media(c.image, c.name)}<div class="body"><span class="eyebrow ebrand">${esc([c.brand, c.category].filter(Boolean).join(' · ') || 'товар')}</span><h3>${esc(c.name)}</h3><div class="sub">${esc(c.summary || '')}</div><div class="foot"><span class="chip"><span>${esc(c.category || c.brand || 'Товар')}</span></span></div></div></article>`).join('') +
       `</div>`;
     if (!add.candidates.length) html += `<div class="empty"><h2>Ничего не нашлось</h2><p>Попробуйте уточнить название</p></div>`;
   }
