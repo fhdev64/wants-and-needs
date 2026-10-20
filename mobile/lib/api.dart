@@ -120,6 +120,7 @@ class Api {
   // ---- wishlist & search ----
   Future<List<Json>> items() async => ((await req('GET', '/items')) as List).cast<Json>();
   Future<void> deleteItem(String id) => req('DELETE', '/items/$id');
+  Future<Json> setDone(String id, bool done) async => await req('PUT', '/items/$id', {'done': done}) as Json;
   Future<Json> saveItem(String jobId, Json meta) async => await req('POST', '/items', {'jobId': jobId, ...meta}) as Json;
   Future<Json> refreshItem(String id) async => await req('POST', '/items/$id/refresh') as Json;
   Future<List<Json>> identify({String query = '', String? image}) async =>

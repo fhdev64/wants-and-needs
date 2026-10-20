@@ -55,16 +55,17 @@ function card(src, { filter = 'all', saved = false } = {}) {
     const pc = [...(info.pros || []).slice(0, 3).map(p => '✅ ' + esc(p)), ...(info.cons || []).slice(0, 3).map(p => '➖ ' + esc(p))];
     if (pc.length) lines.push(pc.join('\n'));
   }
-  if (!loading && saved) lines.push('', '❤️ <i>В ваших хотелках</i>');
+  if (!loading && saved) lines.push('', src.done ? '✅ <i>Исполнено!</i>' : '❤️ <i>В ваших хотелках</i>');
   let text = lines.join('\n');
   if (text.length > 4000) text = text.slice(0, 3990) + '…';
   return text;
 }
-function cardKeyboard(ref, { filter = 'all', saved = false, loading = false } = {}) {
+function cardKeyboard(ref, { filter = 'all', saved = false, loading = false, done = false } = {}) {
   const rows = [FILTERS.map(([k, l]) => ({ text: (k === filter ? '• ' : '') + l, callback_data: `f:${ref}:${k}` }))];
   const act = [];
   if (!saved) act.push({ text: '❤️ В хотелки', callback_data: `s:${ref}` });
   if (saved && !loading) act.push({ text: '🔄 Обновить цены', callback_data: `r:${ref}` });
+  if (saved) act.push({ text: done ? '↩️ Вернуть' : '✅ Исполнено', callback_data: `x2:${ref}` });
   if (saved) act.push({ text: '🗑 Удалить', callback_data: `d:${ref}` });
   rows.push(act);
   if (saved) rows.push([{ text: '⬅️ Мои хотелки', callback_data: 'p:0' }]);
@@ -140,7 +141,7 @@ async function showList(chatId, user, page = 0, editId = null) {
   const text = list.length
     ? `❤️ <b>Мои хотелки</b> — ${list.length}\n\nВыберите товар, чтобы посмотреть цены:`
     : '❤️ Хотелок пока нет.\n\nПросто напишите название товара или пришлите его фото — я найду его и добавлю.';
-  const kb = list.slice(page * per, page * per + per).map(it => [{ text: `${it.name.slice(0, 40)} · от ${rub(it.minPrice)}`, callback_data: `v:${it.id}` }]);
+  const kb = list.slice(page * per, page * per + per).map(it => [{ text: `${it.done ? '✅ ' : ''}${it.name.slice(0, 40)} · от ${rub(it.minPrice)}`, callback_data: `v:${it.id}` }]);
   if (pages > 1) kb.push([
     ...(page > 0 ? [{ text: '◀️', callback_data: `p:${page - 1}` }] : []),
     { text: `${page + 1} / ${pages}`, callback_data: 'noop' },
@@ -153,7 +154,7 @@ async function showList(chatId, user, page = 0, editId = null) {
 async function showItem(chatId, user, id, { editId = null, filter = 'all' } = {}) {
   const it = items.get(user.id, id);
   if (!it) return tg('sendMessage', { chat_id: chatId, text: 'Эта хотелка уже удалена.' });
-  const params = { chat_id: chatId, text: card(it, { filter, saved: true }), parse_mode: 'HTML', link_preview_options: preview(it.image), reply_markup: cardKeyboard(`i:${id}`, { filter, saved: true }) };
+  const params = { chat_id: chatId, text: card(it, { filter, saved: true }), parse_mode: 'HTML', link_preview_options: preview(it.image), reply_markup: cardKeyboard(`i:${id}`, { filter, saved: true, done: !!it.done }) };
   return editId ? tg('editMessageText', { ...params, message_id: editId }) : tg('sendMessage', params);
 }
 
@@ -244,6 +245,13 @@ async function onCallback(cb) {
       api.attachJob(user.id, it, job);
       await ack('Обновляю цены…');
       return liveCard(chatId, mid, job, user.id, { itemId: it.id });
+    }
+    case 'x2': {
+      const it = items.get(user.id, b);
+      if (!it) return ack('Не найдено');
+      it.done = !it.done; it.doneAt = it.done ? Date.now() : null; items.save(user.id, it);
+      await ack(it.done ? '✅ Исполнено!' : 'Вернул в хотелки');
+      return showItem(chatId, user, b, { editId: mid });
     }
     case 'd':
       items.remove(user.id, b); await ack('Удалено');

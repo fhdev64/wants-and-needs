@@ -227,6 +227,7 @@ class _ProductScreenState extends State<ProductScreen> {
   Json? _job;
   late String _filter = widget.cond;
   bool _saved = false, _saving = false, _refreshing = false;
+  late bool _done = widget.saved?['done'] == true;
   StreamSubscription? _sub;
 
   bool get _loading => _job != null && _job!['done'] != true;
@@ -288,6 +289,17 @@ class _ProductScreenState extends State<ProductScreen> {
         toast(context, 'Удалено');
         Navigator.of(context).pop();
       }
+    } catch (e) {
+      if (mounted) toast(context, e.toString());
+    }
+  }
+
+  Future<void> _toggleDone() async {
+    try {
+      final r = await Api.i.setDone(_it['id'], !_done);
+      HapticFeedback.mediumImpact();
+      setState(() => _done = r['done'] == true);
+      if (mounted) toast(context, _done ? 'Исполнено! ✦' : 'Вернул в хотелки');
     } catch (e) {
       if (mounted) toast(context, e.toString());
     }
@@ -477,7 +489,7 @@ class _ProductScreenState extends State<ProductScreen> {
           child: widget.candidate != null
               ? Btn(_saved ? 'В хотелках' : 'Добавить в хотелки', icon: _saved ? Icons.check_rounded : null, kind: _saved ? BtnKind.light : BtnKind.primary, big: true, arrow: !_saved, busy: _saving, onTap: _saved ? null : _add)
               : Row(children: [
-                  Expanded(child: Btn('Подробнее', icon: Icons.info_outline_rounded, kind: BtnKind.light, big: true, onTap: _details)),
+                  Expanded(child: Btn(_done ? 'Вернуть' : 'Исполнено', icon: _done ? Icons.undo_rounded : Icons.check_circle_rounded, kind: BtnKind.light, big: true, onTap: _toggleDone)),
                   const SizedBox(width: 10),
                   Expanded(child: Btn(_refreshing ? 'Обновляю…' : 'Обновить', icon: Icons.refresh_rounded, kind: BtnKind.primary, big: true, busy: _refreshing, onTap: _refreshing ? null : _refresh)),
                 ]),

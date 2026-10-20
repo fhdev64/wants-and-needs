@@ -67,7 +67,11 @@ route('GET', '/api/auth/poll', false, ({ query }) => {
 });
 route('POST', '/api/auth/logout', true, ({ req }) => { sessions.drop((req.headers.authorization || '').replace(/^Bearer\s+/i, '')); return { ok: true }; });
 
-route('GET', '/api/me', true, ({ user }) => ({ ...user, count: items.count(user.id), bot: botUsername }));
+route('GET', '/api/me', true, ({ user }) => {
+  const list = items.list(user.id), active = list.filter(i => !i.done);
+  return { ...user, count: list.length, active: active.length, done: list.length - active.length,
+    total: active.reduce((s, i) => s + (i.minPrice || 0), 0), bot: botUsername };
+});
 route('PUT', '/api/me', true, ({ user, body }) => { if ('city' in body) users.setCity(user.id, String(body.city || '').slice(0, 60)); return users.get(user.id); });
 
 route('GET', '/api/items', true, ({ user }) => items.list(user.id));
@@ -80,6 +84,13 @@ route('POST', '/api/items', true, ({ user, body }) => {
   const item = items.save(user.id, itemFromJob(job, body));
   attachJob(user.id, item, job);
   return items.get(user.id, item.id);
+});
+// mark a wish as fulfilled (or bring it back)
+route('PUT', '/api/items/:id', true, ({ user, params, body }) => {
+  const item = items.get(user.id, params.id);
+  if (!item) throw Object.assign(new Error('Не найдено'), { status: 404 });
+  if ('done' in body) { item.done = !!body.done; item.doneAt = item.done ? Date.now() : null; }
+  return items.save(user.id, item);
 });
 route('POST', '/api/items/:id/refresh', true, ({ user, params }) => {
   const item = items.get(user.id, params.id);

@@ -27,7 +27,7 @@ const ARROW = '<span class="arr"><svg viewBox="0 0 24 24" style="width:18px;heig
 const btn = (cls, html, attrs = '') => `<button class="btn lg lg-clear ${cls}" data-lens="999" ${attrs}>${html}</button>`;
 
 let data = { items: [], settings: {} };
-let view = 'list', sortMode = 'date', filter = '';
+let view = 'list', sortMode = 'date', filter = '', doneFilter = 'active';
 const add = { image: null, query: '', cond: 'any', candidates: null, item: null, loading: false, error: null };
 
 // ---------- conditions, trust ----------
@@ -193,22 +193,36 @@ function renderList(el, tools) {
   drawGrid(el);
 }
 
+// headline numbers: total of active wishes (cheapest offer each), fulfilled count
+function summaryHTML() {
+  const active = data.items.filter(i => !i.done), done = data.items.length - active.length;
+  const total = active.reduce((s, i) => s + (i.minPrice || 0), 0);
+  return `<div class="summary">
+    <div><span class="eyebrow">всё вместе от</span><b>${rub(total)}</b></div>
+    <div><span class="eyebrow">активных</span><b class="w">${active.length}</b></div>
+    <div><span class="eyebrow">исполнено</span><b class="w">${done} <span class="ok">✓</span></b></div>
+  </div>`;
+}
+
 function drawGrid(el) {
   const q = filter.trim().toLowerCase();
-  const items = data.items.filter(i => !q || (i.name + ' ' + (i.brand || '')).toLowerCase().includes(q));
+  const items = data.items.filter(i => (!q || (i.name + ' ' + (i.brand || '')).toLowerCase().includes(q))
+    && (doneFilter === 'all' || (doneFilter === 'done') === !!i.done));
   if (sortMode === 'cheap') items.sort((a, b) => (a.minPrice ?? 1e15) - (b.minPrice ?? 1e15));
   else if (sortMode === 'exp') items.sort((a, b) => (b.minPrice ?? -1) - (a.minPrice ?? -1));
   else items.sort((a, b) => b.addedAt - a.addedAt);
-  el.innerHTML = items.length ? `<div class="grid">${items.map((it, i) => `
-    <article class="card frost" style="--i:${i}" data-id="${it.id}" tabindex="0">
-      <div style="position:relative">${media(it.image || it.userImage, it.name)}${it.offers?.length ? `<span class="count">${it.offers.length} ПРЕДЛ.</span>` : ''}</div>
+  el.innerHTML = summaryHTML() + '<div id="doneSeg" class="done-seg"></div>' + (items.length ? `<div class="grid">${items.map((it, i) => `
+    <article class="card frost ${it.done ? 'is-done' : ''}" style="--i:${i}" data-id="${it.id}" tabindex="0">
+      <div style="position:relative">${media(it.image || it.userImage, it.name)}${it.done ? '<span class="count done">✓ ИСПОЛНЕНО</span>' : it.offers?.length ? `<span class="count">${it.offers.length} ПРЕДЛ.</span>` : ''}</div>
       <div class="body">
         <span class="eyebrow ebrand">${esc(it.brand || 'товар')}</span>
         <h3>${esc(it.name)}</h3>
         <div class="foot"><span class="price"><small>от&nbsp;</small>${rub(it.minPrice)}</span></div>
       </div>
     </article>`).join('')}</div>`
-    : `<div class="empty">${I.search}<h2>Ничего не найдено</h2><p>Нет хотелок по запросу «${esc(filter)}»</p></div>`;
+    : `<div class="empty">${I.search}<h2>${doneFilter === 'done' && !q ? 'Пока ничего не исполнено' : 'Ничего не найдено'}</h2><p>${doneFilter === 'done' && !q ? 'Отмечайте хотелки исполненными в карточке товара.' : `Нет хотелок по запросу «${esc(filter)}»`}</p></div>`);
+  const cnt = k => data.items.filter(i => k === 'all' || (k === 'done') === !!i.done).length;
+  $('#doneSeg').append(seg([['active', `Активные<small>${cnt('active')}</small>`], ['done', `Исполненные<small>${cnt('done')}</small>`], ['all', `Все<small>${cnt('all')}</small>`]], doneFilter, k => { doneFilter = k; drawGrid(el); }));
   el.querySelectorAll('.card[data-id]').forEach(c => {
     c.onclick = () => openItem(c.dataset.id);
     c.onkeydown = e => { if (e.key === 'Enter') openItem(c.dataset.id); };
@@ -487,6 +501,7 @@ function openItem(id) {
   sheetState.filter = 'any'; sheetState.id = id;
   s.innerHTML = `<div class="sheet-head">
       <div class="group lg lg-clear" data-lens="999">
+        <button class="icon-btn" id="mDone" aria-label="${it.done ? 'Вернуть в хотелки' : 'Отметить исполненной'}" title="${it.done ? 'Вернуть в хотелки' : 'Исполнено!'}" style="${it.done ? 'color:var(--green)' : ''}">${I.ok}</button>
         <button class="icon-btn" id="mRefresh" aria-label="Обновить цены" title="Обновить цены">${I.refresh}</button>
         <button class="icon-btn" id="mDel" aria-label="Удалить" title="Удалить" style="color:var(--red)">${I.trash}</button>
       </div>
@@ -497,6 +512,13 @@ function openItem(id) {
   s.querySelector('[data-slot="actions"]').innerHTML = `<div style="color:var(--label2);font-size:12px;text-align:center">Обновлено ${new Date(it.updatedAt || it.addedAt).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}</div>`;
   $('#sheet').classList.add('open');
   $('#mClose').onclick = closeSheet;
+  $('#mDone').onclick = async () => {
+    try {
+      const upd = await srv('PUT', '/items/' + id, { done: !it.done });
+      Object.assign(it, { done: upd.done, doneAt: upd.doneAt }); await persist();
+      closeSheet(); rerender(); toast(upd.done ? 'Исполнено! ✦' : 'Вернул в хотелки');
+    } catch (e) { toast(errText(e)); }
+  };
   $('#mDel').onclick = async () => {
     try { await srv('DELETE', '/items/' + id); } catch (e) { return toast(errText(e)); }
     data.items = data.items.filter(i => i.id !== id); await persist(); closeSheet(); rerender(); toast('Удалено');

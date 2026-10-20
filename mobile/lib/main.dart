@@ -309,6 +309,7 @@ class WishlistScreenState extends State<WishlistScreen> {
   String? _error;
   String _q = '';
   String _sort = 'date';
+  String _done = 'active';
 
   @override
   void initState() {
@@ -327,7 +328,7 @@ class WishlistScreenState extends State<WishlistScreen> {
 
   List<Json> get _visible {
     final q = _q.trim().toLowerCase();
-    final l = (_items ?? []).where((i) => q.isEmpty || '${i['name']} ${i['brand'] ?? ''}'.toLowerCase().contains(q)).toList();
+    final l = (_items ?? []).where((i) => (q.isEmpty || '${i['name']} ${i['brand'] ?? ''}'.toLowerCase().contains(q)) && (_done == 'all' || (_done == 'done') == (i['done'] == true))).toList();
     num p(Json i, num d) => (i['minPrice'] as num?) ?? d;
     if (_sort == 'cheap') l.sort((a, b) => p(a, 1e15).compareTo(p(b, 1e15)));
     if (_sort == 'exp') l.sort((a, b) => p(b, -1).compareTo(p(a, -1)));
@@ -339,7 +340,9 @@ class WishlistScreenState extends State<WishlistScreen> {
     final top = MediaQuery.paddingOf(context).top;
     final items = _visible;
     final all = _items ?? [];
-    final total = all.fold<num>(0, (s, i) => s + ((i['minPrice'] as num?) ?? 0));
+    final active = all.where((i) => i['done'] != true).toList();
+    final total = active.fold<num>(0, (s, i) => s + ((i['minPrice'] as num?) ?? 0));
+    final doneN = all.length - active.length;
     return RefreshIndicator(
       onRefresh: reload,
       color: C.label,
@@ -355,11 +358,29 @@ class WishlistScreenState extends State<WishlistScreen> {
                 const Eyebrow('хотелкино ✦', color: C.gold),
                 const SizedBox(height: 6),
                 const Text('Мои хотелки', style: TextStyle(fontSize: 30, fontWeight: FontWeight.w800, letterSpacing: -.8)),
-                if (all.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Text('${all.length} ${plural(all.length, 'хотелка', 'хотелки', 'хотелок')} · всё вместе от ${rub(total)}', style: const TextStyle(fontSize: 13.5, color: C.label2)),
+                if (all.isNotEmpty) ...[
+                  const SizedBox(height: 14),
+                  // total of active wishes, like the balance card in the reference
+                  Glass(
+                    radius: 24,
+                    padding: const EdgeInsets.all(18),
+                    gradient: kBlueCard,
+                    child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                      Expanded(
+                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          const Eyebrow('всё вместе от', color: Color(0xB3FFFFFF)),
+                          const SizedBox(height: 4),
+                          FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: Text(rub(total), style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w800, letterSpacing: -.8))),
+                        ]),
+                      ),
+                      Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                        Text('${active.length} ${plural(active.length, 'активная', 'активные', 'активных')}', style: const TextStyle(fontWeight: FontWeight.w700)),
+                        const SizedBox(height: 2),
+                        Text('✓ исполнено $doneN', style: const TextStyle(color: C.green, fontWeight: FontWeight.w700)),
+                      ]),
+                    ]),
                   ),
+                ],
               ]),
             ),
           ),
@@ -367,6 +388,18 @@ class WishlistScreenState extends State<WishlistScreen> {
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(20, 14, 0, 4),
+                child: Chips(
+                  items: const [('active', 'Активные'), ('done', 'Исполненные'), ('all', 'Все')],
+                  value: _done,
+                  counts: {'active': active.length, 'done': doneN, 'all': all.length},
+                  onChanged: (v) => setState(() => _done = v),
+                ),
+              ),
+            ),
+          if (all.isNotEmpty)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 10, 0, 0),
                 child: Chips(items: const [('date', 'Новые'), ('cheap', 'Дешевле'), ('exp', 'Дороже')], value: _sort, onChanged: (v) => setState(() => _sort = v)),
               ),
             ),
@@ -394,9 +427,9 @@ class WishlistScreenState extends State<WishlistScreen> {
               hasScrollBody: false,
               child: _Empty(
                 icon: Icons.auto_awesome_rounded,
-                title: _q.isEmpty ? 'Хотелок пока нет' : 'Ничего не найдено',
+                title: _q.isEmpty ? (_done == 'done' && all.isNotEmpty ? 'Пока ничего не исполнено' : 'Хотелок пока нет') : 'Ничего не найдено',
                 text: _q.isEmpty ? 'Сфотографируйте товар или введите название — найдём цены на Авито, Ozon, WB и в магазинах.' : 'Нет хотелок по запросу «$_q»',
-                action: _q.isEmpty ? Btn('Добавить хотелку', icon: Icons.add_rounded, kind: BtnKind.primary, big: true, onTap: widget.onAdd) : null,
+                action: _q.isEmpty && all.isEmpty ? Btn('Добавить хотелку', icon: Icons.add_rounded, kind: BtnKind.primary, big: true, onTap: widget.onAdd) : null,
               ),
             )
           else
@@ -429,11 +462,12 @@ class _ItemCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final n = (item['offers'] as List?)?.length ?? 0;
+    final done = item['done'] == true;
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0, end: 1),
       duration: Duration(milliseconds: 500 + index * 50),
       curve: spring,
-      builder: (_, v, child) => Opacity(opacity: v.clamp(0, 1), child: Transform.translate(offset: Offset(0, 24 * (1 - v)), child: child)),
+      builder: (_, v, child) => Opacity(opacity: v.clamp(0, 1) * (done ? .55 : 1), child: Transform.translate(offset: Offset(0, 24 * (1 - v)), child: child)),
       child: Press(
         onTap: () async {
           await Navigator.of(context).push(glassRoute(ProductScreen(saved: item)));
@@ -445,14 +479,14 @@ class _ItemCard extends StatelessWidget {
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Stack(children: [
               Hero(tag: 'img-${item['id']}', child: ProductImage(url: item['image'], name: item['name'] ?? '', height: 132, radius: 16)),
-              if (n > 0)
+              if (n > 0 || done)
                 Positioned(
                   top: 8,
                   right: 8,
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(color: const Color(0xCC0B0D14), borderRadius: BorderRadius.circular(10)),
-                    child: Text('$n ПРЕДЛ.', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: .6, color: C.gold)),
+                    child: Text(done ? '✓ ИСПОЛНЕНО' : '$n ПРЕДЛ.', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: .6, color: done ? C.green : C.gold)),
                   ),
                 ),
             ]),
@@ -609,9 +643,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
           padding: const EdgeInsets.all(18),
           gradient: kBlueCard,
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Eyebrow('в хотелках', color: Color(0xB3FFFFFF)),
+            const Eyebrow('всё вместе от', color: Color(0xB3FFFFFF)),
             const SizedBox(height: 6),
-            Text('$count ${plural(count, 'товар', 'товара', 'товаров')}', style: const TextStyle(fontSize: 34, fontWeight: FontWeight.w800, letterSpacing: -.8)),
+            FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: Text(rub((u['total'] ?? 0) as num), style: const TextStyle(fontSize: 34, fontWeight: FontWeight.w800, letterSpacing: -.8))),
+            const SizedBox(height: 4),
+            Text('$count ${plural(count, 'хотелка', 'хотелки', 'хотелок')} · ✓ исполнено ${u['done'] ?? 0}', style: const TextStyle(color: Color(0xB3FFFFFF))),
             const SizedBox(height: 14),
             const Divider(color: Color(0x26FFFFFF), height: 1),
             const SizedBox(height: 12),
