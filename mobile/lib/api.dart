@@ -7,6 +7,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// Server address is baked in at build time: flutter build apk --dart-define=SERVER=https://...
 const kServer = String.fromEnvironment('SERVER', defaultValue: 'http://10.0.2.2:8787');
 
+/// Fallback route (Google Apps Script, server/deploy/tg-relay.gs). Some VPN exits can't reach
+/// Russian hosting at all, while Google is reachable both with and without a VPN.
+const kRelay = String.fromEnvironment('RELAY',
+    defaultValue: 'https://script.google.com/macros/s/AKfycbwUT1HkVtJAN3v0aFr4EDNXbSxioRX4eip14RxOJ4ELEDTNzIEE2K_ozUUK-iZDmKLZiw/exec');
+
 class ApiError implements Exception {
   final String message;
   final int status;
@@ -51,22 +56,55 @@ class Api {
     if (user != null) await p.setString('user', jsonEncode(user));
   }
 
+  // direct vs relay is decided by a quick health probe, re-checked every few minutes
+  bool? _direct;
+  DateTime _probed = DateTime(2000);
+  Future<bool> _useDirect() async {
+    if (_direct != null && DateTime.now().difference(_probed) < const Duration(minutes: 3)) return _direct!;
+    try {
+      await http.get(Uri.parse('$kServer/api/health')).timeout(const Duration(seconds: 4));
+      _direct = true;
+    } catch (_) {
+      _direct = kRelay.isEmpty;
+    }
+    _probed = DateTime.now();
+    return _direct!;
+  }
+
+  Future<http.Response> _viaRelay(String method, String path, String? b) async {
+    final payload = jsonEncode({'api': {'m': method, 'p': path, 'k': token, 'b': b == null ? null : jsonDecode(b)}});
+    var r = await http.post(Uri.parse(kRelay), headers: {'content-type': 'application/json'}, body: payload);
+    // Apps Script answers POST with a redirect to the result
+    if (r.statusCode == 302 && r.headers['location'] != null) r = await http.get(Uri.parse(r.headers['location']!));
+    final j = jsonDecode(utf8.decode(r.bodyBytes));
+    if (j is! Map || j['status'] == null) throw ApiError('Сервер недоступен. Проверьте интернет.');
+    return http.Response.bytes(utf8.encode(jsonEncode(j['body'])), j['status'] as int);
+  }
+
   Future<dynamic> req(String method, String path, [Object? body]) async {
     final uri = Uri.parse('$kServer/api$path');
     final headers = {'content-type': 'application/json', if (token != null) 'authorization': 'Bearer $token'};
     http.Response r;
     try {
       final b = body == null ? null : jsonEncode(body);
-      r = await switch (method) {
-        'GET' => http.get(uri, headers: headers),
-        'POST' => http.post(uri, headers: headers, body: b),
-        'PUT' => http.put(uri, headers: headers, body: b),
-        'DELETE' => http.delete(uri, headers: headers),
-        _ => throw ArgumentError(method),
-      }.timeout(const Duration(seconds: 60));
+      final direct = await _useDirect();
+      r = await (direct
+          ? switch (method) {
+              'GET' => http.get(uri, headers: headers),
+              'POST' => http.post(uri, headers: headers, body: b),
+              'PUT' => http.put(uri, headers: headers, body: b),
+              'DELETE' => http.delete(uri, headers: headers),
+              _ => throw ArgumentError(method),
+            }
+          : _viaRelay(method, path, b)).timeout(const Duration(seconds: 60));
     } on TimeoutException {
+      _direct = null;
       throw ApiError('Сервер долго не отвечает');
+    } on ApiError {
+      _direct = null;
+      rethrow;
     } catch (_) {
+      _direct = null;
       throw ApiError('Сервер недоступен. Проверьте интернет.');
     }
     final data = r.body.isEmpty ? null : jsonDecode(utf8.decode(r.bodyBytes));

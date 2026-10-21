@@ -37,6 +37,7 @@
     "electron@33.4.11": true
   },
   "hotelki": {
-    "server": "http://188.120.246.113:8787"
+    "server": "http://188.120.246.113:8787",
+    "relay": "https://script.google.com/macros/s/AKfycbwUT1HkVtJAN3v0aFr4EDNXbSxioRX4eip14RxOJ4ELEDTNzIEE2K_ozUUK-iZDmKLZiw/exec"
   }
 }

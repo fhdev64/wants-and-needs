@@ -72,14 +72,33 @@ ipcMain.handle('notify', (_, alert) => {
 });
 
 // all server calls go through the main process (no CORS/CSP issues, token never leaves this machine except to our server)
+// Fallback route through Google Apps Script (server/deploy/tg-relay.gs): some VPN exits
+// can't reach Russian hosting directly. Direct vs relay is decided by a quick probe.
+const RELAY = process.env.HOTELKI_RELAY ?? (require('./package.json').hotelki.relay || '');
+let direct = null, probed = 0;
+async function useDirect() {
+  if (direct !== null && Date.now() - probed < 180000) return direct;
+  try { await fetch(SERVER + '/api/health', { signal: AbortSignal.timeout(4000) }); direct = true; }
+  catch { direct = !RELAY; }
+  probed = Date.now();
+  return direct;
+}
 ipcMain.handle('srv', async (_, { method, path: p, body, token }) => {
   try {
+    if (!(await useDirect())) {
+      const r = await fetch(RELAY, { method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ api: { m: method, p, k: token || null, b: body === undefined ? null : body } }), signal: AbortSignal.timeout(60000) });
+      const j = await r.json();
+      if (j.status == null) throw new Error('relay');
+      return { status: j.status, body: j.body ?? {} };
+    }
     const r = await fetch(SERVER + '/api' + p, {
       method, headers: { 'content-type': 'application/json', ...(token ? { authorization: 'Bearer ' + token } : {}) },
       body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(60000)
     });
     return { status: r.status, body: await r.json().catch(() => ({})) };
   } catch (e) {
+    direct = null;
     return { status: 0, body: { error: 'Сервер недоступен. Проверьте интернет.' } };
   }
 });
