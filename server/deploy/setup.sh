@@ -18,11 +18,16 @@ apt-get install -y ca-certificates curl git ufw fonts-liberation fonts-noto-colo
   libasound2t64 libatk-bridge2.0-0t64 libatk1.0-0t64 libcups2t64 libdrm2 libgbm1 libgtk-3-0t64 libnss3 \
   libxcomposite1 libxdamage1 libxfixes3 libxkbcommon0 libxrandr2 libpango-1.0-0 libcairo2
 
-# Node.js 22 (node:sqlite is built in)
-if ! node -v 2>/dev/null | grep -q '^v2[2-9]'; then
-  curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
-  apt-get install -y nodejs
+# Node.js 24 (node:sqlite is built in). nodejs.org / nodesource / npmjs are often unreachable
+# from Russian hosting, so take the official tarball from a mirror and use the npmmirror registry.
+NODE_MIRROR=${NODE_MIRROR:-https://mirrors.huaweicloud.com/nodejs}
+if ! node -v 2>/dev/null | grep -q '^v2[4-9]'; then
+  V=$(curl -fsSL "$NODE_MIRROR/latest-v24.x/SHASUMS256.txt" | grep -o 'node-v24[^ ]*-linux-x64.tar.xz' | head -1)
+  curl -fsSL "$NODE_MIRROR/latest-v24.x/$V" -o /tmp/node.tar.xz
+  tar -xJf /tmp/node.tar.xz -C /usr/local --strip-components=1 && rm /tmp/node.tar.xz
 fi
+npm config set registry "${NPM_REGISTRY:-https://registry.npmmirror.com}" --location=global
+ln -sf /usr/local/bin/node /usr/bin/node
 
 # app user + code
 id hotelki >/dev/null 2>&1 || useradd -r -m -d /home/hotelki -s /usr/sbin/nologin hotelki

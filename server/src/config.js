@@ -12,6 +12,9 @@ if (fs.existsSync(file)) {
 
 const cfg = {
   botToken: process.env.BOT_TOKEN || '',
+  // api.telegram.org is blocked from Russian hosting; set TG_RELAY (deploy/tg-relay.gs) or TG_API
+  tgRelay: process.env.TG_RELAY || '',
+  tgApi: (process.env.TG_API || 'https://api.telegram.org').replace(/\/+$/, ''),
   ai: {
     provider: process.env.AI_PROVIDER || 'codex',
     key: process.env.AI_KEY || '',

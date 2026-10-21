@@ -38,41 +38,46 @@
 
 ## Установка
 
-Скачайте `Hotelki.exe` из [Releases](https://github.com/fhdev64/wants-and-needs/releases) и запустите. Установка не нужна: это портативная версия.
+- **Windows:** скачайте `hotelkino.exe` из [Releases](https://github.com/fhdev64/wants-and-needs/releases) и запустите. Это портативная версия, установка не нужна.
+- **Android:** установите `app-release.apk`.
+- **Telegram:** бот [@hotelkinobot](https://t.me/hotelkinobot).
 
-При первом запуске откроются **Настройки**. Вставьте API-ключ любой нейросети из списка выше.
+Вход в приложения выполняется через бота. Хотелки общие для бота, компьютера и телефона и хранятся на сервере. Ключ нейросети есть только на сервере.
 
-> Ключ и список хотелок хранятся только локально, в `%APPDATA%\Хотелки\data.json`.
+## Сервер
+
+`server/` — это Node 24 (API на порту 8787, Telegram-бот, проверка цен по расписанию, Puppeteer для прямого поиска). Развёртывание на чистом Ubuntu 24.04:
+
+```bash
+scp server/deploy/setup.sh root@HOST:/root/ && ssh root@HOST bash /root/setup.sh
+```
+
+Затем положите секреты в `/opt/hotelki/server/.env` (`BOT_TOKEN`, `AI_PROVIDER`, `AI_KEY`, `PUBLIC_URL`) и выполните `systemctl restart hotelki`.
+
+С российского хостинга `api.telegram.org`, nodejs.org и npmjs недоступны:
+- Node.js и npm-пакеты `setup.sh` берёт с зеркал;
+- запросы бота идут через прокси на Google Apps Script. Код прокси лежит в `server/deploy/tg-relay.gs`. Опубликуйте его как веб-приложение с доступом «Все» и укажите URL в `.env` как `TG_RELAY=`.
 
 ## Сборка из исходников
 
-Нужен Node.js 20+.
-
 ```bash
-npm install
-npm start          # запуск в режиме разработки
-npm run dist       # сборка портативного dist/Hotelki.exe
+npm install && npm run dist                     # dist/hotelkino.exe (адрес сервера: package.json → hotelki.server)
+cd mobile && flutter build apk --release --dart-define=SERVER=http://HOST:8787
+cd server && npm install && node src/index.js   # локальный сервер
 ```
-
-Если `electron-builder` падает с ошибкой создания символической ссылки (`winCodeSign`), включите в Windows «Режим разработчика» или запустите сборку от администратора.
 
 ## Устройство
 
 ```
-main.js       — главный процесс Electron: окно, хранение данных, запросы к нейросетям
-scrape.js     — прямой поиск по площадкам в скрытом окне браузера + фильтр релевантности
-preload.js    — безопасный мост между интерфейсом и главным процессом
-src/
-  index.html  — разметка окна
-  styles.css  — дизайн-система: матовое и жидкое стекло, концентрические радиусы, анимации
-  glass.js    — преломление на кромках стекла (SVG-карта смещений + backdrop-filter)
-  app.js      — интерфейс: список, добавление, карточка товара, настройки
+main.js, preload.js   — Electron: окно, мост к серверу (IPC srv), фирменные уведомления
+src/                  — интерфейс ПК (app.js, styles.css, notify.*)
+mobile/lib/           — Flutter-приложение (main, product, ui, api, notify)
+server/src/           — api, bot, search, shops (Puppeteer), ai, watch (история цен, уведомления), db (SQLite)
+server/deploy/        — setup.sh для VPS, tg-relay.gs
 ```
-
-Запросы к API нейросетей идут из главного процесса. Ключ не попадает в код страницы.
 
 ## Ограничения
 
 - Цены собирает нейросеть с веб-поиском, поэтому они могут быть неточными или устаревшими. Перед покупкой проверяйте цену на сайте.
-- Авито и Ozon блокируют иностранные IP. Если у вас включён VPN, прямой поиск по ним не сработает: выключите VPN или нажмите «пройти проверку».
+- Авито и Ozon блокируют иностранные IP, поэтому сервер должен стоять в России.
 - Отсев мошеннических сайтов снижает риск, но не гарантирует безопасность. Проверяйте продавца и пользуйтесь безопасной доставкой.

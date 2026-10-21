@@ -37,6 +37,6 @@
     "electron@33.4.11": true
   },
   "hotelki": {
-    "server": "http://localhost:8787"
+    "server": "http://188.120.246.113:8787"
   }
 }

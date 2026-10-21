@@ -244,7 +244,8 @@ class Btn extends StatelessWidget {
                 else if (icon != null)
                   Icon(icon, size: big ? 21 : 19, color: fg),
                 if (busy || icon != null) const SizedBox(width: 9),
-                Flexible(child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: big ? 16.5 : 15, fontWeight: FontWeight.w700, color: fg))),
+                // shrink a long label slightly rather than cutting it off
+                Flexible(child: FittedBox(fit: BoxFit.scaleDown, child: Text(label, maxLines: 1, style: TextStyle(fontSize: big ? 16.5 : 15, fontWeight: FontWeight.w700, color: fg)))),
               ]),
             ),
             if (arrow)

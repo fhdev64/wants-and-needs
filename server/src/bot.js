@@ -7,10 +7,13 @@ const search = require('./search');
 const api = require('./api');
 const watch = require('./watch');
 
-const TG = `https://api.telegram.org/bot${cfg.botToken}`;
+const TG = `${cfg.tgApi}/bot${cfg.botToken}`;
+// TG_RELAY: Google Apps Script web app (deploy/tg-relay.gs) that forwards calls when
+// api.telegram.org is blocked from the host
+const relay = body => fetch(cfg.tgRelay, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ t: cfg.botToken, ...body }) }).then(r => r.json());
 async function tg(method, params = {}) {
-  const r = await fetch(`${TG}/${method}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(params) });
-  const j = await r.json();
+  const j = cfg.tgRelay ? await relay({ m: method, p: params })
+    : await (await fetch(`${TG}/${method}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(params) })).json();
   if (!j.ok && !/message is not modified/.test(j.description || '')) throw new Error(`${method}: ${j.description}`);
   return j.result;
 }
@@ -171,7 +174,8 @@ async function showItem(chatId, user, id, { editId = null, filter = 'all' } = {}
 async function photoToDataUrl(photos) {
   const best = photos.filter(p => p.width <= 1280).at(-1) || photos.at(-1);
   const f = await tg('getFile', { file_id: best.file_id });
-  const buf = Buffer.from(await (await fetch(`https://api.telegram.org/file/bot${cfg.botToken}/${f.file_path}`)).arrayBuffer());
+  const buf = cfg.tgRelay ? Buffer.from((await relay({ f: f.file_path })).result, 'base64')
+    : Buffer.from(await (await fetch(`${cfg.tgApi}/file/bot${cfg.botToken}/${f.file_path}`)).arrayBuffer());
   return 'data:image/jpeg;base64,' + buf.toString('base64');
 }
 
@@ -317,7 +321,7 @@ async function run() {
   let offset = 0;
   for (;;) {
     try {
-      const ups = await tg('getUpdates', { offset, timeout: 50, allowed_updates: ['message', 'callback_query'] });
+      const ups = await tg('getUpdates', { offset, timeout: cfg.tgRelay ? 25 : 50, allowed_updates: ['message', 'callback_query'] });
       for (const u of ups) {
         offset = u.update_id + 1;
         const h = u.message ? onMessage(u.message) : u.callback_query ? onCallback(u.callback_query) : null;
