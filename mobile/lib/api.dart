@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:http/http.dart' as http;
+import 'package:http/io_client.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Server address is baked in at build time: flutter build apk --dart-define=SERVER=https://...
@@ -43,6 +45,10 @@ class Api {
     city = p.getString('city') ?? '';
     final u = p.getString('user');
     if (u != null) user = jsonDecode(u) as Json;
+    // start from the route that worked last time and re-check it in the background
+    final route = p.getString('route');
+    if (route != null) _direct = route == 'direct';
+    unawaited(_probe());
   }
 
   Future<void> _save() async {
@@ -56,56 +62,94 @@ class Api {
     if (user != null) await p.setString('user', jsonEncode(user));
   }
 
-  // direct vs relay is decided by a quick health probe, re-checked every few minutes
+  // Direct connection fails fast (3 s to connect) so a blocked route doesn't stall every request
+  final _http = IOClient(HttpClient()..connectionTimeout = const Duration(seconds: 3));
+
+  // direct vs relay: decided by a background probe, remembered between launches
   bool? _direct;
+  Future<bool>? _probing;
   DateTime _probed = DateTime(2000);
+  Future<bool> _probe() => _probing ??= () async {
+        bool ok;
+        try {
+          final r = await _http.get(Uri.parse('$kServer/api/health')).timeout(const Duration(seconds: 4));
+          ok = r.statusCode == 200;
+        } catch (_) {
+          ok = false;
+        }
+        _direct = ok || kRelay.isEmpty;
+        _probed = DateTime.now();
+        _probing = null;
+        (await SharedPreferences.getInstance()).setString('route', _direct! ? 'direct' : 'relay');
+        return _direct!;
+      }();
   Future<bool> _useDirect() async {
-    if (_direct != null && DateTime.now().difference(_probed) < const Duration(minutes: 3)) return _direct!;
-    try {
-      await http.get(Uri.parse('$kServer/api/health')).timeout(const Duration(seconds: 4));
-      _direct = true;
-    } catch (_) {
-      _direct = kRelay.isEmpty;
-    }
-    _probed = DateTime.now();
+    if (_direct == null) return _probe();
+    // while on the slow route, look for the direct one again now and then
+    if (!_direct! && DateTime.now().difference(_probed) > const Duration(minutes: 2)) unawaited(_probe());
     return _direct!;
   }
 
-  Future<http.Response> _viaRelay(String method, String path, String? b) async {
-    final payload = jsonEncode({'api': {'m': method, 'p': path, 'k': token, 'b': b == null ? null : jsonDecode(b)}});
+  Future<http.Response> _relayOnce(String payload) async {
     var r = await http.post(Uri.parse(kRelay), headers: {'content-type': 'application/json'}, body: payload);
     // Apps Script answers POST with a redirect to the result
     if (r.statusCode == 302 && r.headers['location'] != null) r = await http.get(Uri.parse(r.headers['location']!));
     final j = jsonDecode(utf8.decode(r.bodyBytes));
-    if (j is! Map || j['status'] == null) throw ApiError('Сервер недоступен. Проверьте интернет.');
+    if (j is! Map || j['status'] == null) throw const FormatException('relay');
     return http.Response.bytes(utf8.encode(jsonEncode(j['body'])), j['status'] as int);
   }
+
+  // Apps Script latency is erratic (2 s … 40 s): a GET that hasn't answered in 3 s gets a twin
+  // request and the first answer wins. Writes are never duplicated, they get one retry on failure.
+  Future<http.Response> _viaRelay(String method, String path, String? b) async {
+    final payload = jsonEncode({'api': {'m': method, 'p': path, 'k': token, 'b': b == null ? null : jsonDecode(b)}});
+    if (method != 'GET') return _relayOnce(payload).catchError((_) => _relayOnce(payload));
+    final done = Completer<http.Response>();
+    var failed = 0;
+    void run() => _relayOnce(payload).then((r) {
+          if (!done.isCompleted) done.complete(r);
+        }, onError: (Object e) {
+          if (++failed == 2 && !done.isCompleted) done.completeError(e);
+        });
+    run();
+    Future.delayed(Duration(seconds: path.contains('wait=') ? 25 : 3), () {
+      if (!done.isCompleted) run();
+    });
+    return done.future;
+  }
+
+  Future<http.Response> _send(String method, Uri uri, Map<String, String> headers, String? b) => switch (method) {
+        'GET' => _http.get(uri, headers: headers),
+        'POST' => _http.post(uri, headers: headers, body: b),
+        'PUT' => _http.put(uri, headers: headers, body: b),
+        'DELETE' => _http.delete(uri, headers: headers),
+        _ => throw ArgumentError(method),
+      };
 
   Future<dynamic> req(String method, String path, [Object? body]) async {
     final uri = Uri.parse('$kServer/api$path');
     final headers = {'content-type': 'application/json', if (token != null) 'authorization': 'Bearer $token'};
+    final b = body == null ? null : jsonEncode(body);
     http.Response r;
     try {
-      final b = body == null ? null : jsonEncode(body);
-      final direct = await _useDirect();
-      r = await (direct
-          ? switch (method) {
-              'GET' => http.get(uri, headers: headers),
-              'POST' => http.post(uri, headers: headers, body: b),
-              'PUT' => http.put(uri, headers: headers, body: b),
-              'DELETE' => http.delete(uri, headers: headers),
-              _ => throw ArgumentError(method),
-            }
-          : _viaRelay(method, path, b)).timeout(const Duration(seconds: 60));
+      if (await _useDirect()) {
+        try {
+          r = await _send(method, uri, headers, b).timeout(const Duration(seconds: 60));
+        } on SocketException {
+          // the direct route just broke (VPN switched on, network changed): finish this request via the relay
+          if (kRelay.isEmpty) rethrow;
+          _direct = false;
+          _probed = DateTime.now();
+          r = await _viaRelay(method, path, b).timeout(const Duration(seconds: 60));
+        }
+      } else {
+        r = await _viaRelay(method, path, b).timeout(const Duration(seconds: 60));
+      }
     } on TimeoutException {
-      _direct = null;
       throw ApiError('Сервер долго не отвечает');
-    } on ApiError {
-      _direct = null;
-      rethrow;
     } catch (_) {
       _direct = null;
-      throw ApiError('Сервер недоступен. Проверьте интернет.');
+      throw ApiError('Нет связи с сервером. Проверьте интернет.');
     }
     final data = r.body.isEmpty ? null : jsonDecode(utf8.decode(r.bodyBytes));
     if (r.statusCode == 401 && token != null) {
@@ -167,16 +211,24 @@ class Api {
   Future<List<Json>> identify({String query = '', String? image}) async =>
       (((await req('POST', '/identify', {'query': query, 'image': image})) as Json)['candidates'] as List).cast<Json>();
   Future<Json> search(String name) async => await req('POST', '/search', {'name': name, 'city': city}) as Json;
-  Future<Json> job(String id) async => await req('GET', '/search/$id') as Json;
+  Future<Json> job(String id, {int? after}) async =>
+      await req('GET', after == null ? '/search/$id' : '/search/$id?after=$after&wait=20') as Json;
 
-  /// Polls a search job until it is done, emitting every update.
+  /// Follows a search job until it is done, emitting every update. Long poll: the server holds
+  /// each request until there is news, so a slow route costs one round trip per update.
   Stream<Json> watch(Json job) async* {
     yield job;
     var j = job;
+    var fails = 0;
     while (j['done'] != true) {
-      await Future.delayed(const Duration(milliseconds: 1500));
-      j = await this.job(j['id']);
-      yield j;
+      try {
+        j = await this.job(j['id'], after: (j['rev'] ?? 0) as int);
+        fails = 0;
+        yield j;
+      } on ApiError catch (e) {
+        if (e.status == 404 || ++fails >= 3) rethrow;
+        await Future.delayed(const Duration(seconds: 2));
+      }
     }
   }
 }

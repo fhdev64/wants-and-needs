@@ -71,7 +71,7 @@ function start(name, city = '', { withInfo = true, fresh = false } = {}) {
   const job = {
     id: crypto.randomBytes(8).toString('hex'), name, city, started: Date.now(), done: false,
     status: Object.fromEntries(GROUPS.map(([g]) => [g, 'loading'])), errors: {},
-    info: null, infoDone: !withInfo, offers: [], ...summarize([]), listeners: new Set()
+    info: null, infoDone: !withInfo, offers: [], ...summarize([]), listeners: new Set(), rev: 0
   };
   const raw = [];
   const changed = () => {
@@ -80,6 +80,7 @@ function start(name, city = '', { withInfo = true, fresh = false } = {}) {
     if (!job.image) job.image = job.info?.image || job.offers.find(o => /^https:\/\//.test(o.image || ''))?.image || '';
     job.done = job.infoDone && Object.values(job.status).every(s => s !== 'loading');
     if (job.done) cache.set(key, job);
+    job.rev++;
     for (const fn of job.listeners) try { fn(job); } catch {}
   };
   const tasks = [];
@@ -99,9 +100,19 @@ function start(name, city = '', { withInfo = true, fresh = false } = {}) {
 const get = id => jobs.get(id);
 // JSON view without internals
 const view = j => j && ({
-  id: j.id, name: j.name, city: j.city, done: j.done, status: j.status, groups: GROUPS.map(([k, l, kind]) => ({ key: k, label: l, kind })),
+  id: j.id, rev: j.rev || 0, name: j.name, city: j.city, done: j.done, status: j.status, groups: GROUPS.map(([k, l, kind]) => ({ key: k, label: l, kind })),
   info: j.info, infoDone: j.infoDone, image: j.image || '', offers: j.offers,
   minPrice: j.minPrice, minNew: j.minNew, minUsed: j.minUsed, minDiscounted: j.minDiscounted, maxPrice: j.maxPrice
 });
 
-module.exports = { start, get, view, GROUPS, condOf };
+// long poll: resolve once the job has moved past `after` (or is done), or after `ms`
+function waitFor(j, after, ms) {
+  if (j.done || (j.rev || 0) > after) return Promise.resolve(j);
+  return new Promise(res => {
+    const fn = () => { if (j.done || j.rev > after) { clearTimeout(t); j.listeners.delete(fn); res(j); } };
+    const t = setTimeout(() => { j.listeners.delete(fn); res(j); }, ms);
+    j.listeners.add(fn);
+  });
+}
+
+module.exports = { start, get, view, waitFor, GROUPS, condOf };

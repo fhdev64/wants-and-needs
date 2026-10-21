@@ -75,31 +75,51 @@ ipcMain.handle('notify', (_, alert) => {
 // Fallback route through Google Apps Script (server/deploy/tg-relay.gs): some VPN exits
 // can't reach Russian hosting directly. Direct vs relay is decided by a quick probe.
 const RELAY = process.env.HOTELKI_RELAY ?? (require('./package.json').hotelki.relay || '');
-let direct = null, probed = 0;
-async function useDirect() {
-  if (direct !== null && Date.now() - probed < 180000) return direct;
-  try { await fetch(SERVER + '/api/health', { signal: AbortSignal.timeout(4000) }); direct = true; }
-  catch { direct = !RELAY; }
-  probed = Date.now();
+let direct = null, probed = 0, probing = null;
+const probe = () => probing ||= (async () => {
+  try { direct = (await fetch(SERVER + '/api/health', { signal: AbortSignal.timeout(4000) })).ok; }
+  catch { direct = false; }
+  direct ||= !RELAY; probed = Date.now(); probing = null;
   return direct;
+})();
+probe(); // decide the route at startup, not on the first click
+async function useDirect() {
+  if (direct === null) return probe();
+  if (!direct && Date.now() - probed > 120000) probe(); // look for the direct route again now and then
+  return direct;
+}
+async function relayOnce(payload) {
+  const j = await (await fetch(RELAY, { method: 'POST', headers: { 'content-type': 'application/json' }, body: payload, signal: AbortSignal.timeout(60000) })).json();
+  if (j.status == null) throw new Error('relay');
+  return { status: j.status, body: j.body ?? {} };
+}
+// Apps Script latency is erratic (2 s … 40 s): a GET that hasn't answered in 3 s gets a twin request,
+// the first answer wins. Writes are never duplicated, they just get one retry on failure.
+async function viaRelay(method, p, body, token) {
+  const payload = JSON.stringify({ api: { m: method, p, k: token || null, b: body === undefined ? null : body } });
+  if (method !== 'GET') return relayOnce(payload).catch(() => relayOnce(payload));
+  const hedge = new Promise(r => setTimeout(r, /[?&]wait=/.test(p) ? 25000 : 3000)).then(() => relayOnce(payload));
+  return Promise.any([relayOnce(payload), hedge]);
 }
 ipcMain.handle('srv', async (_, { method, path: p, body, token }) => {
   try {
-    if (!(await useDirect())) {
-      const r = await fetch(RELAY, { method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ api: { m: method, p, k: token || null, b: body === undefined ? null : body } }), signal: AbortSignal.timeout(60000) });
-      const j = await r.json();
-      if (j.status == null) throw new Error('relay');
-      return { status: j.status, body: j.body ?? {} };
+    if (!(await useDirect())) return await viaRelay(method, p, body, token);
+    let r;
+    try {
+      r = await fetch(SERVER + '/api' + p, {
+        method, headers: { 'content-type': 'application/json', ...(token ? { authorization: 'Bearer ' + token } : {}) },
+        body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(60000)
+      });
+    } catch (e) {
+      // the direct route just broke (VPN switched on): finish this request via the relay
+      if (!RELAY || e.name === 'TimeoutError') throw e;
+      direct = false; probed = Date.now();
+      return await viaRelay(method, p, body, token);
     }
-    const r = await fetch(SERVER + '/api' + p, {
-      method, headers: { 'content-type': 'application/json', ...(token ? { authorization: 'Bearer ' + token } : {}) },
-      body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(60000)
-    });
     return { status: r.status, body: await r.json().catch(() => ({})) };
   } catch (e) {
     direct = null;
-    return { status: 0, body: { error: 'Сервер недоступен. Проверьте интернет.' } };
+    return { status: 0, body: { error: 'Нет связи с сервером. Проверьте интернет.' } };
   }
 });
 

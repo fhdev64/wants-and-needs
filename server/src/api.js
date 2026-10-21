@@ -106,9 +106,11 @@ route('POST', '/api/items/:id/refresh', true, ({ user, params }) => {
 
 route('POST', '/api/identify', true, async ({ body }) => ({ candidates: await ai.identify({ query: String(body.query || ''), image: body.image || null }) }));
 route('POST', '/api/search', true, ({ user, body }) => search.view(search.start(String(body.name), body.city ?? user.city ?? '')));
-route('GET', '/api/search/:id', true, ({ params }) => {
+route('GET', '/api/search/:id', true, async ({ params, query }) => {
   const j = search.get(params.id);
   if (!j) throw Object.assign(new Error('Поиск не найден'), { status: 404 });
+  // ?after=<rev>&wait=<sec>: hold the request until there is something new (fewer round trips over slow routes)
+  if (query.has('after')) await search.waitFor(j, +query.get('after'), Math.min(25, +(query.get('wait') || 20)) * 1000);
   return search.view(j);
 });
 

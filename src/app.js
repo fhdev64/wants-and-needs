@@ -356,9 +356,14 @@ function applyJob(item, j) {
 }
 async function pollJob(item, job, onUpdate) {
   applyJob(item, job); onUpdate();
+  // long poll: the server holds the request until there is news, one round trip per update
+  let fails = 0;
   while (!job.done) {
-    await new Promise(r => setTimeout(r, 1500));
-    try { job = await srv('GET', '/search/' + job.id); } catch (e) { item.lastError = errText(e); break; }
+    try { job = await srv('GET', `/search/${job.id}?after=${job.rev || 0}&wait=20`); fails = 0; }
+    catch (e) {
+      if (++fails >= 3) { item.lastError = errText(e); break; }
+      await new Promise(r => setTimeout(r, 2000)); continue;
+    }
     applyJob(item, job); onUpdate();
   }
   return job;
