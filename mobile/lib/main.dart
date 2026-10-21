@@ -191,7 +191,7 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
           ],
           SizedBox(
             width: double.infinity,
-            child: Btn(_waiting && _code != null ? 'Открыть Telegram' : 'Войти через Telegram', icon: Icons.send_rounded, big: true, arrow: true, kind: BtnKind.primary, busy: _waiting && _code == null, onTap: _start),
+            child: Btn(_waiting && _code != null ? 'Открыть Telegram' : 'Войти через Telegram', icon: Icons.send_rounded, big: true, kind: BtnKind.primary, busy: _waiting && _code == null, onTap: _start),
           ),
           const SizedBox(height: 16),
           Text('Откроется бот @${Api.i.bot} — нажмите в нём «Войти».\nХотелки общие для бота, компьютера и телефона.', textAlign: TextAlign.center, style: const TextStyle(fontSize: 12.5, height: 1.5, color: C.label3)),

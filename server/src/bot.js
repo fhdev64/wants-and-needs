@@ -10,7 +10,7 @@ const watch = require('./watch');
 const TG = `${cfg.tgApi}/bot${cfg.botToken}`;
 // TG_RELAY: Google Apps Script web app (deploy/tg-relay.gs) that forwards calls when
 // api.telegram.org is blocked from the host
-const relay = body => fetch(cfg.tgRelay, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ t: cfg.botToken, ...body }) }).then(r => r.json());
+const relay = body => fetch(cfg.tgRelay, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ t: cfg.botToken, ...body }), signal: AbortSignal.timeout(70000) }).then(r => r.json());
 async function tg(method, params = {}) {
   const j = cfg.tgRelay ? await relay({ m: method, p: params })
     : await (await fetch(`${TG}/${method}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(params) })).json();
