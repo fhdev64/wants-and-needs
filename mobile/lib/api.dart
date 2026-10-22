@@ -124,6 +124,9 @@ class Api {
       }();
   Future<bool> _useDirect() async {
     if (_direct == null) return _probe();
+    // the direct route is being re-checked (app start, network change): some networks let the TCP handshake
+    // through and then drop everything, so a request sent there now could hang until the timeout
+    if (_direct! && _probing != null) return _probing!;
     // while on the slow route, look for the direct one again now and then
     if (!_direct! && DateTime.now().difference(_probed) > const Duration(minutes: 2)) unawaited(_probe());
     return _direct!;
@@ -139,10 +142,11 @@ class Api {
   }
 
   // Apps Script latency is erratic (2 s … 40 s): a GET that hasn't answered in 3 s gets a twin
-  // request and the first answer wins. Writes are never duplicated, they get one retry on failure.
+  // request and the first answer wins. Writes are never duplicated (sign-in by tag is safe to repeat),
+  // they get one retry on failure.
   Future<http.Response> _viaRelay(String method, String path, String? b) async {
     final payload = jsonEncode({'api': {'m': method, 'p': path, 'k': token, 'b': b == null ? null : jsonDecode(b)}});
-    if (method != 'GET') return _relayOnce(payload).catchError((_) => _relayOnce(payload));
+    if (method != 'GET' && path != '/auth/tag') return _relayOnce(payload).catchError((_) => _relayOnce(payload));
     final done = Completer<http.Response>();
     var failed = 0;
     void run() => _relayOnce(payload).then((r) {
@@ -170,7 +174,11 @@ class Api {
   Future<dynamic> req(String method, String path, [Object? body]) async {
     final headers = {'content-type': 'application/json', if (token != null) 'authorization': 'Bearer $token'};
     final b = body == null ? null : jsonEncode(body);
-    Future<http.Response> direct() => _send(method, Uri.parse('$_base/api$path'), headers, b).timeout(const Duration(seconds: 60));
+    // a read that gets no answer is a dead route rather than a slow server (long polls are held up to 25 s);
+    // writes may run long on the server (AI, search start) and can't be safely resent
+    final wait = method != 'GET' ? 60 : path.contains('wait=') ? 35 : 15;
+    Future<http.Response> direct() => _send(method, Uri.parse('$_base/api$path'), headers, b).timeout(Duration(seconds: wait));
+    bool deadRoute(Object e) => _netError(e) || (e is TimeoutException && (method == 'GET' || path == '/auth/tag'));
     http.Response r;
     try {
       if (await _useDirect()) {
@@ -184,7 +192,7 @@ class Api {
             r = await direct();
           }
         } catch (e) {
-          if (!_netError(e)) rethrow;
+          if (!deadRoute(e)) rethrow;
           // the route just broke (VPN switched on, network changed): try the other addresses, else the relay
           _direct = null;
           r = await _probe() ? await direct() : await _viaRelay(method, path, b).timeout(const Duration(seconds: 60));
