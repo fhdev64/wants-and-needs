@@ -1,6 +1,8 @@
 package app.hotelki.hotelki
 
+import android.annotation.SuppressLint
 import android.content.Intent
+import android.provider.Settings
 import com.vk.id.AccessToken
 import com.vk.id.VKID
 import com.vk.id.VKIDAuthFail
@@ -14,6 +16,10 @@ import io.flutter.plugin.common.MethodChannel
 class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        // the id a sign-in tag is bound to: stays the same after reinstalling the app, differs on every other device
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "hotelkino/device").setMethodCallHandler { call, result ->
+            if (call.method == "id") result.success(androidId()) else result.notImplemented()
+        }
         // Sign-in through the installed VK app. The SDK gets an authorization code made with the server's
         // code_challenge; the server swaps it for the profile. Any error here sends the app to the browser sign-in.
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "hotelkino/vkid").setMethodCallHandler { call, result ->
@@ -25,6 +31,9 @@ class MainActivity : FlutterActivity() {
             }
         }
     }
+
+    @SuppressLint("HardwareIds")
+    private fun androidId(): String? = Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID)
 
     // VK, OK and Mail.ru apps answer this action when they can confirm a VK ID sign-in
     private fun vkAppInstalled() = packageManager.queryIntentServices(Intent("com.vk.silentauth.action.GET_INFO"), 0).isNotEmpty()

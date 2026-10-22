@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/io_client.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -205,7 +207,29 @@ class Api {
     return data;
   }
 
-  // ---- sign-in with VK ID / Google / Apple: the provider page opens in the browser, the app polls ----
+  // ---- sign-in by tag: the tag is bound to this phone, other devices can't use it ----
+  static const _device = MethodChannel('hotelkino/device');
+
+  /// ANDROID_ID survives reinstalling the app; a random key kept in settings when it's unavailable
+  Future<String> _deviceId() async {
+    try {
+      final id = await _device.invokeMethod<String>('id');
+      if (id != null && id.isNotEmpty) return 'android:$id';
+    } catch (_) {}
+    final p = await SharedPreferences.getInstance();
+    var key = p.getString('deviceKey');
+    if (key == null) {
+      final r = Random.secure();
+      key = List.generate(32, (_) => r.nextInt(256).toRadixString(16).padLeft(2, '0')).join();
+      await p.setString('deviceKey', key);
+    }
+    return 'key:$key';
+  }
+
+  Future<void> loginTag(String tag) async =>
+      _signedIn(await req('POST', '/auth/tag', {'tag': tag, 'deviceId': await _deviceId(), 'device': 'Android'}) as Json);
+
+  // ---- sign-in with VK ID / Google / Apple (off for now, see kOAuthLogin): the provider page opens in the browser, the app polls ----
   Future<Json> loginStart(String provider) async => await req('POST', '/auth/start', {'provider': provider, 'device': 'Android'}) as Json;
 
   /// 'pending' while the user is still in the browser, 'ok' once signed in; throws ApiError when sign-in failed

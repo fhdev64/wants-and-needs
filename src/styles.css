@@ -324,6 +324,17 @@ body.signed-out .sidebar,body.signed-out .toolbar,body.signed-out .content{displ
 .sso-btn.vk{background:#0077ff;color:#fff;box-shadow:0 12px 30px -12px rgba(0,119,255,.9),inset 0 1px 0 rgba(255,255,255,.25)}
 .sso-btn.google{background:#fff;color:#1f1f1f;box-shadow:0 12px 30px -14px rgba(255,255,255,.5)}
 .sso-btn.apple{background:#000;color:#fff;border-color:rgba(255,255,255,.28)}
+/* sign-in by tag */
+.tag-form{display:flex;flex-direction:column;gap:12px;width:100%}
+.tag-field{display:flex;align-items:center;gap:6px;height:56px;padding:0 20px;border-radius:999px;background:var(--fill);border:1px solid rgba(255,255,255,.12);cursor:text;transition:border-color .2s,box-shadow .2s}
+.tag-field:focus-within{border-color:rgba(90,130,255,.7);box-shadow:0 0 0 4px rgba(47,91,255,.18)}
+.tag-field span{font-size:20px;font-weight:800;color:#a9cbff}
+.tag-field input{flex:1;min-width:0;height:100%;border:0;outline:0;background:transparent;color:var(--label);font:inherit;font-size:18px;font-weight:700}
+.tag-field input::placeholder{color:var(--label3);font-weight:600}
+.tag-field em{font-style:normal;font-size:13px;font-weight:700;color:var(--label3)}
+.tag-field em.ok{color:#4ade80;font-size:16px}
+.tag-form .btn{height:52px;font-size:16px;width:100%}
+.tag-form .btn:disabled{opacity:.5;pointer-events:none}
 /* linked Telegram in the account screen */
 .tg-linked{display:flex;align-items:center;gap:14px;padding:14px 16px;margin-top:10px}
 .tg-ic{width:42px;height:42px;flex:none;border-radius:50%;display:grid;place-items:center;background:linear-gradient(140deg,#36aef0,#1f8fd6)}

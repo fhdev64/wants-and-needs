@@ -663,8 +663,8 @@ function renderSettings(el) {
   const bot = data.settings.bot || 'hotelkinobot';
   el.innerHTML = `<div class="form">
     <div class="frost account">
-      <div class="avatar">${esc((u.name || u.username || '?').trim()[0]?.toUpperCase())}</div>
-      <div class="who"><b>${esc(u.name || 'Пользователь')}</b><span>${esc(providerName(u.provider))}${u.email ? ' · ' + esc(u.email) : ''}</span></div>
+      <div class="avatar">${esc((u.name || u.username || '?').replace(/^@/, '').trim()[0]?.toUpperCase())}</div>
+      <div class="who"><b>${esc(u.name || 'Пользователь')}</b><span>${u.provider === 'tag' ? 'вход по тегу · только на этом компьютере' : esc(providerName(u.provider)) + (u.email ? ' · ' + esc(u.email) : '')}</span></div>
       ${btn('', 'Выйти', 'id="logout"')}
     </div>
     <div class="h-section">Поиск</div>
@@ -713,10 +713,48 @@ async function linkTelegram() {
   } catch (e) { b.disabled = false; toast(errText(e)); }
 }
 
-// ---------- sign-in: VK ID / Google / Apple in the browser, the app polls the server ----------
+// ---------- sign-in: a tag bound to this computer; VK ID / Google / Apple are put away for now ----------
+const OAUTH_LOGIN = false;
+const TAG_MIN = 5;
+function showTagLogin() {
+  $('#login').innerHTML = `<div class="login-card frost">
+      <div class="login-logo"><span class="mark">✦</span></div>
+      <h1>хотелкино ✦︎</h1>
+      <p>Список желаний и лучшие цены<br>на Авито, Ozon, WB и в магазинах</p>
+      <form class="tag-form" id="tagForm">
+        <label class="tag-field"><span>@</span><input id="tag" placeholder="придумайте тег" maxlength="32" spellcheck="false" autocomplete="off"><em id="tagLeft"></em></label>
+        ${btn('prominent', 'Войти', 'id="tagGo" type="submit" disabled')}
+      </form>
+      <small>Тег привязывается к этому компьютеру —<br>с другого устройства по нему не войти.</small>
+    </div>`;
+  const inp = $('#tag'), go = $('#tagGo'), left = $('#tagLeft');
+  // latin letters and digits only, kept lowercase: @Anton1 and @anton1 are the same tag
+  inp.oninput = () => {
+    inp.value = inp.value.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 32);
+    const n = inp.value.length;
+    go.disabled = n < TAG_MIN;
+    left.textContent = !n ? '' : n < TAG_MIN ? 'ещё ' + (TAG_MIN - n) : '✓';
+    left.classList.toggle('ok', n >= TAG_MIN);
+  };
+  $('#tagForm').onsubmit = async e => {
+    e.preventDefault();
+    if (inp.value.length < TAG_MIN || go.disabled) return;
+    go.disabled = true;
+    try {
+      const r = await srv('POST', '/auth/tag', { tag: inp.value, deviceId: await api.deviceId(), device: 'Windows' });
+      Object.assign(data.settings, { token: r.token, user: r.user, city: r.user.city || '' });
+      data.settings.citySlug = await api.citySlug(data.settings.city);
+      await persist(); enterApp(); toast('Привет, ' + r.user.name + '!');
+    } catch (e) { go.disabled = false; toast(errText(e)); }
+  };
+  setTimeout(() => inp.focus(), 50);
+}
+
+// VK ID / Google / Apple in the browser, the app polls the server
 let loginPoll = null;
 function showLogin() {
   document.body.classList.add('signed-out');
+  if (!OAUTH_LOGIN) return showTagLogin();
   const on = data.settings.providers || Object.keys(PROVIDERS);
   $('#login').innerHTML = `<div class="login-card frost">
       <div class="login-logo"><span class="mark">✦</span></div>

@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('api', {
   getData: () => ipcRenderer.invoke('data:get'),
   setData: d => ipcRenderer.invoke('data:set', d),
   citySlug: c => ipcRenderer.invoke('city:slug', c),
+  deviceId: () => ipcRenderer.invoke('device:id'),
   srv: req => ipcRenderer.invoke('srv', req),
   notify: a => ipcRenderer.invoke('notify', a),
   onOpenItem: fn => ipcRenderer.on('open-item', (_, id) => fn(id))

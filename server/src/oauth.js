@@ -92,7 +92,7 @@ async function googleIdToken(idToken) {
 }
 const vkAppRedirect = () => `vk${o.vk.androidClientId}://vk.ru/blank.html`;
 
-const NAMES = { vk: 'VK ID', google: 'Google', apple: 'Apple ID', tg: 'Telegram' };
+const NAMES = { tag: 'тег', vk: 'VK ID', google: 'Google', apple: 'Apple ID', tg: 'Telegram' };
 const enabled = () => Object.keys(PROVIDERS).filter(p => PROVIDERS[p].on());
 const get = p => PROVIDERS[p]?.on() ? PROVIDERS[p] : null;
 

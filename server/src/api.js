@@ -1,4 +1,4 @@
-// HTTP API for the desktop and Android apps. Auth: Bearer session token obtained by signing in with VK ID, Google or Apple.
+// HTTP API for the desktop and Android apps. Auth: Bearer session token obtained by signing in with a tag (or VK ID, Google, Apple).
 const http = require('http');
 const zlib = require('zlib');
 const crypto = require('crypto');
@@ -43,7 +43,7 @@ function profile(user) {
   const ids = identities.list(user.id);
   const main = ids.find(i => i.provider !== 'tg'), tg = ids.find(i => i.provider === 'tg');
   const provider = main?.provider || 'tg';
-  return { ...user, provider, providerName: oauth.NAMES[provider], email: main?.email || '', telegram: tg ? { username: tg.username, name: tg.name } : null };
+  return { ...user, provider, providerName: oauth.NAMES[provider], tag: provider === 'tag' ? main.username : '', email: main?.email || '', telegram: tg ? { username: tg.username, name: tg.name } : null };
 }
 
 // the page the browser shows after the provider sent the user back
@@ -92,6 +92,27 @@ const fail = (status, msg) => { throw Object.assign(new Error(msg), { status });
 
 // vkClientId / googleClientId let the Android app sign in through the VK app and the system Google account picker
 route('GET', '/api/health', false, () => ({ ok: true, bot: botUsername, providers: oauth.enabled(), vkClientId: cfg.oauth.vk.androidClientId, googleClientId: cfg.oauth.google.clientId }));
+
+// sign-in by tag: the first device to take a tag owns it, no other device can sign in with it
+const TAG = /^[a-z0-9]{5,32}$/;
+const deviceSecret = id => crypto.createHash('sha256').update('hotelki-device:' + id).digest('hex');
+route('POST', '/api/auth/tag', false, ({ body }) => {
+  const tag = String(body.tag || '').trim().replace(/^@/, '').toLowerCase();
+  if (!TAG.test(tag)) fail(400, 'Тег — от 5 до 32 латинских букв и цифр');
+  const deviceId = String(body.deviceId || '');
+  if (deviceId.length < 16) fail(400, 'Не удалось определить устройство — обновите приложение');
+  const secret = deviceSecret(deviceId);
+  let userId = identities.user('tag', tag);
+  if (userId) {
+    const own = identities.secret('tag', tag) || '';
+    if (own.length !== secret.length || !crypto.timingSafeEqual(Buffer.from(own), Buffer.from(secret)))
+      fail(403, `Тег @${tag} уже занят. Войти по нему можно только на устройстве, где его создали`);
+  } else {
+    userId = users.create({ name: '@' + tag }).id;
+    identities.link('tag', tag, userId, { name: '@' + tag, username: tag, secret });
+  }
+  return { status: 'ok', token: sessions.create(userId, String(body.device || '').slice(0, 60)), user: profile(users.get(userId)) };
+});
 
 route('POST', '/api/auth/start', false, ({ body }) => {
   if (!body.provider) fail(400, 'Вход через Telegram больше не работает — обновите приложение');

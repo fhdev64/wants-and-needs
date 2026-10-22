@@ -20,7 +20,7 @@ db.exec(`
     id TEXT PRIMARY KEY, user_id INTEGER NOT NULL, data TEXT NOT NULL, added INTEGER, updated INTEGER
   );
   CREATE INDEX IF NOT EXISTS items_user ON items(user_id, added);
-  -- how a user signs in (vk, google, apple) and the linked Telegram bot (tg); sub = id at the provider
+  -- how a user signs in (tag, vk, google, apple) and the linked Telegram bot (tg); sub = id at the provider
   CREATE TABLE IF NOT EXISTS identities (
     provider TEXT NOT NULL, sub TEXT NOT NULL, user_id INTEGER NOT NULL, name TEXT, username TEXT, email TEXT, created INTEGER,
     PRIMARY KEY (provider, sub)
@@ -32,6 +32,8 @@ if (db.prepare('PRAGMA user_version').get().user_version < 1) {
   db.exec(`INSERT OR IGNORE INTO identities (provider, sub, user_id, name, username, created)
     SELECT 'tg', CAST(id AS TEXT), id, name, username, created FROM users; PRAGMA user_version = 1;`);
 }
+// v2: sign-in by tag; secret = hash of the device the tag is bound to
+if (db.prepare('PRAGMA user_version').get().user_version < 2) db.exec('ALTER TABLE identities ADD COLUMN secret TEXT; PRAGMA user_version = 2;');
 
 const now = () => Date.now();
 
@@ -60,10 +62,12 @@ const identities = {
   user: (provider, sub) => db.prepare('SELECT user_id FROM identities WHERE provider = ? AND sub = ?').get(provider, String(sub))?.user_id ?? null,
   of: (userId, provider) => db.prepare('SELECT * FROM identities WHERE user_id = ? AND provider = ? ORDER BY created LIMIT 1').get(userId, provider),
   list: userId => db.prepare('SELECT provider, name, username, email FROM identities WHERE user_id = ? ORDER BY created').all(userId),
+  secret: (provider, sub) => db.prepare('SELECT secret FROM identities WHERE provider = ? AND sub = ?').get(provider, String(sub))?.secret ?? null,
   link(provider, sub, userId, p = {}) {
-    db.prepare(`INSERT INTO identities (provider, sub, user_id, name, username, email, created) VALUES (?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(provider, sub) DO UPDATE SET user_id = excluded.user_id, name = excluded.name, username = excluded.username, email = coalesce(excluded.email, identities.email)`)
-      .run(provider, String(sub), userId, p.name || '', p.username || '', p.email || null, now());
+    db.prepare(`INSERT INTO identities (provider, sub, user_id, name, username, email, secret, created) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(provider, sub) DO UPDATE SET user_id = excluded.user_id, name = excluded.name, username = excluded.username,
+        email = coalesce(excluded.email, identities.email), secret = coalesce(excluded.secret, identities.secret)`)
+      .run(provider, String(sub), userId, p.name || '', p.username || '', p.email || null, p.secret || null, now());
   },
   unlink: (userId, provider) => db.prepare('DELETE FROM identities WHERE user_id = ? AND provider = ?').run(userId, provider).changes > 0
 };

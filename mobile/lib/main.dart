@@ -88,7 +88,11 @@ class Logo extends StatelessWidget {
       );
 }
 
-// ======================= Sign-in: VK ID / Google / Apple =======================
+// ======================= Sign-in: a tag bound to this phone (VK ID / Google / Apple are off for now) =======================
+/// sign-in through VK ID / Google / Apple: put away for now, kept for later (--dart-define=OAUTH_LOGIN=true)
+const kOAuthLogin = bool.fromEnvironment('OAUTH_LOGIN');
+const kTagMin = 5;
+
 const kProviders = {
   'vk': (label: 'Войти с VK ID', bg: Color(0xFF0077FF), fg: Colors.white, border: Color(0x00000000)),
   'google': (label: 'Войти через Google', bg: Colors.white, fg: Color(0xFF1F1F1F), border: Color(0x00000000)),
@@ -103,7 +107,8 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
-  String? _busy; // provider being started
+  String? _busy; // provider being started, or 'tag'
+  final _tag = TextEditingController();
   String? _code;
   Timer? _poll;
   DateTime? _until;
@@ -118,8 +123,61 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _poll?.cancel();
+    _tag.dispose();
     super.dispose();
   }
+
+  Future<void> _loginTag() async {
+    if (_tag.text.length < kTagMin || _busy != null) return;
+    FocusScope.of(context).unfocus();
+    setState(() => _busy = 'tag');
+    try {
+      await Api.i.loginTag(_tag.text);
+      HapticFeedback.mediumImpact();
+      widget.onDone();
+    } catch (e) {
+      if (mounted) toast(context, e.toString());
+    }
+    if (mounted) setState(() => _busy = null);
+  }
+
+  Widget _tagForm() => Column(children: [
+        Glass(
+          radius: 999,
+          padding: const EdgeInsets.fromLTRB(22, 2, 18, 2),
+          child: Row(children: [
+            const Text('@', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: C.price)),
+            const SizedBox(width: 6),
+            Expanded(
+              child: TextField(
+                controller: _tag,
+                autocorrect: false,
+                enableSuggestions: false,
+                textInputAction: TextInputAction.go,
+                onChanged: (_) => setState(() {}),
+                onSubmitted: (_) => _loginTag(),
+                // latin letters and digits only, kept lowercase: @Anton1 and @anton1 are the same tag
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(RegExp('[a-zA-Z0-9]')),
+                  LengthLimitingTextInputFormatter(32),
+                  TextInputFormatter.withFunction((_, v) => v.copyWith(text: v.text.toLowerCase())),
+                ],
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                decoration: const InputDecoration(border: InputBorder.none, hintText: 'придумайте тег', hintStyle: TextStyle(color: C.label3, fontWeight: FontWeight.w600)),
+              ),
+            ),
+            AnimatedOpacity(
+              duration: const Duration(milliseconds: 200),
+              opacity: _tag.text.isEmpty ? 0 : 1,
+              child: _tag.text.length >= kTagMin
+                  ? const Icon(Icons.check_circle_rounded, color: C.green, size: 22)
+                  : Text('ещё ${kTagMin - _tag.text.length}', style: const TextStyle(fontSize: 13, color: C.label3, fontWeight: FontWeight.w700)),
+            ),
+          ]),
+        ),
+        const SizedBox(height: 12),
+        Btn('Войти', kind: BtnKind.primary, big: true, busy: _busy == 'tag', onTap: _tag.text.length >= kTagMin ? _loginTag : null),
+      ]);
 
   // back from the browser: check right away instead of waiting for the next tick
   @override
@@ -225,43 +283,60 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     final pad = MediaQuery.paddingOf(context);
     return Scaffold(
-      body: Padding(
-        padding: EdgeInsets.fromLTRB(24, pad.top + 24, 24, pad.bottom + 24),
-        child: Column(children: [
-          const Spacer(flex: 3),
-          TweenAnimationBuilder<double>(
-            tween: Tween(begin: 0, end: 1),
-            duration: const Duration(milliseconds: 900),
-            curve: spring,
-            builder: (_, v, child) => Opacity(opacity: v.clamp(0, 1), child: Transform.scale(scale: .85 + .15 * v, child: child)),
-            child: const Logo(size: 96),
-          ),
-          const SizedBox(height: 28),
-          const Text(kAppName, style: TextStyle(fontSize: 34, fontWeight: FontWeight.w800, letterSpacing: -1)),
-          const SizedBox(height: 12),
-          const Text('Список желаний и лучшие цены\nна Авито, Ozon, WB и в магазинах', textAlign: TextAlign.center, style: TextStyle(fontSize: 16, height: 1.45, color: C.label2)),
-          const Spacer(flex: 4),
-          if (_code != null) ...[
-            Glass(
-              padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
-              child: Row(children: [
-                const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2.2, color: C.price)),
-                const SizedBox(width: 14),
-                const Expanded(child: Text('Завершите вход в браузере и вернитесь сюда', style: TextStyle(fontSize: 14.5, color: C.label2))),
-                TextButton(onPressed: () => _stop(), child: const Text('Отмена', style: TextStyle(color: C.price, fontWeight: FontWeight.w700))),
-              ]),
-            ),
-            const SizedBox(height: 14),
-          ],
-          for (final e in kProviders.entries)
-            if (Api.i.providers.contains(e.key))
-              Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: _ProviderButton(id: e.key, label: e.value.label, bg: e.value.bg, fg: e.value.fg, border: e.value.border, busy: _busy == e.key, onTap: _busy == null ? () => _start(e.key) : null),
+      // scrolls when the keyboard is up, fills the screen otherwise
+      body: LayoutBuilder(
+        builder: (context, box) => SingleChildScrollView(
+          physics: const ClampingScrollPhysics(),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: box.maxHeight),
+            child: IntrinsicHeight(
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(24, pad.top + 24, 24, pad.bottom + 24),
+                child: Column(children: [
+                  const Spacer(flex: 3),
+                  TweenAnimationBuilder<double>(
+                    tween: Tween(begin: 0, end: 1),
+                    duration: const Duration(milliseconds: 900),
+                    curve: spring,
+                    builder: (_, v, child) => Opacity(opacity: v.clamp(0, 1), child: Transform.scale(scale: .85 + .15 * v, child: child)),
+                    child: const Logo(size: 96),
+                  ),
+                  const SizedBox(height: 28),
+                  const Text(kAppName, style: TextStyle(fontSize: 34, fontWeight: FontWeight.w800, letterSpacing: -1)),
+                  const SizedBox(height: 12),
+                  const Text('Список желаний и лучшие цены\nна Авито, Ozon, WB и в магазинах', textAlign: TextAlign.center, style: TextStyle(fontSize: 16, height: 1.45, color: C.label2)),
+                  const Spacer(flex: 4),
+                  if (!kOAuthLogin) ...[
+                    _tagForm(),
+                    const SizedBox(height: 14),
+                    const Text('Тег привязывается к этому телефону —\nс другого устройства по нему не войти.', textAlign: TextAlign.center, style: TextStyle(fontSize: 12.5, height: 1.5, color: C.label3)),
+                  ] else ...[
+                    if (_code != null) ...[
+                      Glass(
+                        padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
+                        child: Row(children: [
+                          const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2.2, color: C.price)),
+                          const SizedBox(width: 14),
+                          const Expanded(child: Text('Завершите вход в браузере и вернитесь сюда', style: TextStyle(fontSize: 14.5, color: C.label2))),
+                          TextButton(onPressed: () => _stop(), child: const Text('Отмена', style: TextStyle(color: C.price, fontWeight: FontWeight.w700))),
+                        ]),
+                      ),
+                      const SizedBox(height: 14),
+                    ],
+                    for (final e in kProviders.entries)
+                      if (Api.i.providers.contains(e.key))
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: _ProviderButton(id: e.key, label: e.value.label, bg: e.value.bg, fg: e.value.fg, border: e.value.border, busy: _busy == e.key, onTap: _busy == null ? () => _start(e.key) : null),
+                        ),
+                    const SizedBox(height: 6),
+                    const Text('Хотелки общие для компьютера и телефона.\nТелеграм-бота можно привязать после входа.', textAlign: TextAlign.center, style: TextStyle(fontSize: 12.5, height: 1.5, color: C.label3)),
+                  ],
+                ]),
               ),
-          const SizedBox(height: 6),
-          const Text('Хотелки общие для компьютера и телефона.\nТелеграм-бота можно привязать после входа.', textAlign: TextAlign.center, style: TextStyle(fontSize: 12.5, height: 1.5, color: C.label3)),
-        ]),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -860,6 +935,7 @@ class _ProfileScreenState extends State<ProfileScreen> with WidgetsBindingObserv
   Widget build(BuildContext context) {
     final u = Api.i.user ?? {};
     final name = (u['name'] ?? 'Пользователь') as String;
+    final letter = name.replaceFirst('@', '');
     final count = (u['count'] ?? 0) as int;
     final top = MediaQuery.paddingOf(context).top;
     Widget row(IconData ic, String title, String sub, VoidCallback onTap, {Color? color}) => Press(
@@ -891,10 +967,10 @@ class _ProfileScreenState extends State<ProfileScreen> with WidgetsBindingObserv
             height: 46,
             alignment: Alignment.center,
             decoration: const BoxDecoration(shape: BoxShape.circle, gradient: LinearGradient(colors: [C.tg, C.blue])),
-            child: Text(name.isEmpty ? '?' : name[0].toUpperCase(), style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w800)),
+            child: Text(letter.isEmpty ? '?' : letter[0].toUpperCase(), style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w800)),
           ),
         ]),
-        Text('$name · ${u['providerName'] ?? 'Telegram'}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: C.label2, fontSize: 14)),
+        Text(u['provider'] == 'tag' ? '$name · привязан к этому телефону' : '$name · ${u['providerName'] ?? 'Telegram'}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: C.label2, fontSize: 14)),
         const SizedBox(height: 18),
         // blue summary card, like the balance card in the reference
         Glass(

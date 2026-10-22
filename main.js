@@ -49,6 +49,17 @@ ipcMain.handle('raise', () => { if (win.isMinimized()) win.restore(); win.show()
 ipcMain.handle('data:get', () => load());
 ipcMain.handle('data:set', (_, d) => { save(d); return true; });
 ipcMain.handle('city:slug', (_, c) => avitoCity(c));
+// the id a sign-in tag is bound to: Windows' MachineGuid (stays after reinstalling the app), else a key kept in userData
+ipcMain.handle('device:id', () => {
+  try {
+    const out = require('child_process').execFileSync('reg', ['query', 'HKLM\\SOFTWARE\\Microsoft\\Cryptography', '/v', 'MachineGuid'], { encoding: 'utf8', windowsHide: true });
+    const m = out.match(/MachineGuid\s+REG_SZ\s+(\S+)/);
+    if (m) return 'win:' + m[1].toLowerCase();
+  } catch {}
+  const f = path.join(app.getPath('userData'), 'device.json');
+  try { return 'key:' + JSON.parse(fs.readFileSync(f, 'utf8')).key; }
+  catch { const key = require('crypto').randomBytes(32).toString('hex'); fs.writeFileSync(f, JSON.stringify({ key })); return 'key:' + key; }
+});
 
 // branded price-alert popups, stacked in the bottom-right corner of the screen
 const popups = [];
