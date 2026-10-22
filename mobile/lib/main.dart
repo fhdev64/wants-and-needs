@@ -176,7 +176,7 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
           ]),
         ),
         const SizedBox(height: 12),
-        Btn('Войти', kind: BtnKind.primary, big: true, busy: _busy == 'tag', onTap: _tag.text.length >= kTagMin ? _loginTag : null),
+        SizedBox(width: double.infinity, child: Btn('Войти', kind: BtnKind.primary, big: true, busy: _busy == 'tag', onTap: _tag.text.length >= kTagMin ? _loginTag : null)),
       ]);
 
   // back from the browser: check right away instead of waiting for the next tick
