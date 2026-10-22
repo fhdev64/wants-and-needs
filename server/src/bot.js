@@ -1,4 +1,4 @@
-// Telegram bot (long polling — no domain or webhook needed).
+// Telegram bot (long polling — no domain or webhook needed). Optional: linked to an account from the app.
 // Text or photo → product candidates → pick → wishlist item with live price search.
 const cfg = require('./config');
 const { users, items } = require('./db');
@@ -180,19 +180,26 @@ async function photoToDataUrl(photos) {
 }
 
 // ---------- handlers ----------
+const APP_TEXT = 'Войдите в приложении через VK ID, Google или Apple ID, затем в профиле нажмите «Привязать Telegram» — хотелки станут общими для бота и приложений, а уведомления о скидках будут приходить сюда.\n\nСкачать для Windows и Android: https://github.com/fhdev64/wants-and-needs/releases';
+const fromName = f => [f.first_name, f.last_name].filter(Boolean).join(' ');
+
 async function onMessage(m) {
   const chatId = m.chat.id;
-  const user = users.upsert({ id: m.from.id, name: [m.from.first_name, m.from.last_name].filter(Boolean).join(' '), username: m.from.username });
-  const s = st(user.id);
   const text = (m.text || '').trim();
+  const arg = text.startsWith('/start') ? text.split(' ')[1] || '' : '';
+  if (arg.startsWith('link_')) {
+    const ok = api.linkTelegram(arg.slice(5), { id: m.from.id, name: fromName(m.from), username: m.from.username || '' });
+    return tg('sendMessage', { chat_id: chatId, parse_mode: 'HTML', reply_markup: ok ? MENU : { remove_keyboard: true }, text: ok
+      ? '✅ <b>Telegram привязан!</b>\n\nХотелки общие для бота и приложения. Пишите название товара или присылайте фото — добавлю его и найду цены. Сюда же будут приходить уведомления о скидках.'
+      : '⌛ Ссылка устарела. Нажмите «Привязать Telegram» в приложении ещё раз.' });
+  }
+  const user = api.tgUser(m.from.id);
+  // the bot works only for accounts linked from the app
+  if (!user) return tg('sendMessage', { chat_id: chatId, parse_mode: 'HTML', reply_markup: { remove_keyboard: true },
+    text: `Привет${m.from.first_name ? ', ' + esc(m.from.first_name) : ''}! ✨ Я — бот приложения <b>хотелкино</b>.\n\n` + APP_TEXT });
+  const s = st(user.id);
 
   if (text.startsWith('/start')) {
-    const arg = text.split(' ')[1] || '';
-    if (arg.startsWith('login_')) {
-      const code = arg.slice(6), l = api.loginInfo(code);
-      if (!l || l.exp < Date.now()) return tg('sendMessage', { chat_id: chatId, text: '⌛ Ссылка для входа устарела. Нажмите «Войти через Telegram» в приложении ещё раз.', reply_markup: MENU });
-      return tg('sendMessage', { chat_id: chatId, text: `🔐 Войти в «хотелкино ✦︎»${l.device ? ' на устройстве <b>' + esc(l.device) + '</b>' : ''}?\n\nВаши хотелки синхронизируются между ботом и приложением.`, parse_mode: 'HTML', reply_markup: { inline_keyboard: [[{ text: '✅ Войти', callback_data: `a:${code}` }, { text: '✖️ Это не я', callback_data: `n:${code}` }]] } });
-    }
     return tg('sendMessage', { chat_id: chatId, parse_mode: 'HTML', reply_markup: MENU, text:
       `Привет, ${esc(m.from.first_name || '')}! ✨ Я — <b>хотелкино ✦︎</b>.\n\n` +
       'Напишите название товара или пришлите его фото — я пойму, что это, добавлю в ваши хотелки и найду лучшие цены на Авито, Ozon, WB, Яндекс Маркете и в магазинах.\n\n' +
@@ -206,8 +213,7 @@ async function onMessage(m) {
     const rows = [['Вся Россия'], ...CITIES.reduce((a, c, i) => (i % 3 ? a[a.length - 1].push(c) : a.push([c]), a), [])].map(r => r.map(t => ({ text: t })));
     return tg('sendMessage', { chat_id: chatId, parse_mode: 'HTML', text: `📍 Сейчас: <b>${esc(user.city || 'вся Россия')}</b>\nВыберите город или напишите свой — буду искать объявления рядом с вами.`, reply_markup: { keyboard: rows, resize_keyboard: true, one_time_keyboard: true } });
   }
-  if (text === '/app' || text === B.app) return tg('sendMessage', { chat_id: chatId, parse_mode: 'HTML', reply_markup: MENU, text:
-    '📱 <b>Приложения «хотелкино ✦︎»</b> — для Windows и Android.\n\nВойти просто: нажмите в приложении «Войти через Telegram» и подтвердите вход здесь. Хотелки общие для бота и приложений.\n\nСкачать: https://github.com/fhdev64/wants-and-needs/releases' });
+  if (text === '/app' || text === B.app) return tg('sendMessage', { chat_id: chatId, parse_mode: 'HTML', reply_markup: MENU, text: '📱 <b>Приложения «хотелкино»</b>\n\n' + APP_TEXT });
 
   if (s.mode?.startsWith('target:') && text) {
     const id = s.mode.slice(7); s.mode = null;
@@ -229,17 +235,12 @@ async function onMessage(m) {
 }
 
 async function onCallback(cb) {
-  const user = users.upsert({ id: cb.from.id, name: [cb.from.first_name, cb.from.last_name].filter(Boolean).join(' '), username: cb.from.username });
+  const user = api.tgUser(cb.from.id);
+  if (!user) return tg('answerCallbackQuery', { callback_query_id: cb.id, text: 'Привяжите бота в приложении: Профиль → Привязать Telegram', show_alert: true });
   const chatId = cb.message.chat.id, mid = cb.message.message_id;
   const [kind, a, b, c] = cb.data.split(':');
   const ack = text => tg('answerCallbackQuery', { callback_query_id: cb.id, ...(text ? { text } : {}) });
   switch (kind) {
-    case 'a': {
-      const ok = api.confirmLogin(a, { id: cb.from.id, name: user.name, username: user.username });
-      await ack(ok ? 'Вход выполнен' : 'Ссылка устарела');
-      return tg('editMessageText', { chat_id: chatId, message_id: mid, text: ok ? '✅ Готово! Возвращайтесь в приложение — вход выполнен.' : '⌛ Ссылка устарела, попробуйте войти ещё раз.' });
-    }
-    case 'n': await ack(); return tg('editMessageText', { chat_id: chatId, message_id: mid, text: '🛡 Вход отменён.' });
     case 'c': return pick(cb, user, a, b);
     case 'x': delete st(user.id).picks[a]; await ack(); return tg('editMessageText', { chat_id: chatId, message_id: mid, text: 'Отменено.' });
     case 'p': await ack(); return showList(chatId, user, +a, mid);
@@ -293,6 +294,8 @@ async function onCallback(cb) {
 }
 
 watch.onAlert(async (userId, a) => {
+  const chatId = api.tgChat(userId);
+  if (!chatId) return;
   const head = a.kind === 'target' ? '🎯 <b>Цена дошла до вашей цели!</b>' : `📉 <b>Подешевело на ${a.pct}%</b>`;
   const priceLine = a.oldPrice && a.oldPrice !== a.newPrice ? `<s>${rub(a.oldPrice)}</s>  →  <b>${rub(a.newPrice)}</b>` : `<b>${rub(a.newPrice)}</b>`;
   const caption = [head, '', `<b>${esc(a.name)}</b>`, priceLine, a.store ? `🏪 ${esc(a.store)}` : '', '', '<i>хотелкино ✦︎</i>'].filter((x, i, arr) => x || arr[i - 1]).join('\n');
@@ -301,10 +304,10 @@ watch.onAlert(async (userId, a) => {
     [{ text: '📋 Все цены', callback_data: `v:${a.itemId}` }]
   ] };
   try {
-    if (/^https:\/\//.test(a.image || '')) await tg('sendPhoto', { chat_id: userId, photo: a.image, caption, parse_mode: 'HTML', reply_markup: kb });
+    if (/^https:\/\//.test(a.image || '')) await tg('sendPhoto', { chat_id: chatId, photo: a.image, caption, parse_mode: 'HTML', reply_markup: kb });
     else throw new Error('no photo');
   } catch {
-    await tg('sendMessage', { chat_id: userId, text: caption, parse_mode: 'HTML', reply_markup: kb }).catch(e => console.error('alert', e.message));
+    await tg('sendMessage', { chat_id: chatId, text: caption, parse_mode: 'HTML', reply_markup: kb }).catch(e => console.error('alert', e.message));
   }
 });
 

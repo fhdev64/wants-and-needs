@@ -6,8 +6,13 @@ import 'package:http/http.dart' as http;
 import 'package:http/io_client.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Server address is baked in at build time: flutter build apk --dart-define=SERVER=https://...
-const kServer = String.fromEnvironment('SERVER', defaultValue: 'http://10.0.2.2:8787');
+/// Addresses of the same server, comma-separated: flutter build apk --dart-define=SERVER=https://...,http://...
+/// https on 443 gets through mobile networks and DPI best; the bare IP keeps working when DNS for the domain fails.
+final kServers = const String.fromEnvironment('SERVER', defaultValue: 'https://188-120-246-113.sslip.io,http://188.120.246.113:8787')
+    .split(',')
+    .map((s) => s.trim().replaceAll(RegExp(r'/+$'), ''))
+    .where((s) => s.isNotEmpty)
+    .toList();
 
 /// Fallback route (Google Apps Script, server/deploy/tg-relay.gs). Some VPN exits can't reach
 /// Russian hosting at all, while Google is reachable both with and without a VPN.
@@ -33,6 +38,10 @@ class Api {
   Json? user;
   String city = '';
   String bot = 'hotelkinobot';
+
+  /// sign-in providers the server has keys for (vk, google, apple)
+  List<String> providers = const ['vk', 'google', 'apple'];
+  String _base = kServers.first;
   final _authLost = StreamController<void>.broadcast();
   Stream<void> get onAuthLost => _authLost.stream;
 
@@ -48,6 +57,9 @@ class Api {
     // start from the route that worked last time and re-check it in the background
     final route = p.getString('route');
     if (route != null) _direct = route == 'direct';
+    final base = p.getString('base');
+    if (base != null && kServers.contains(base)) _base = base;
+    providers = p.getStringList('providers') ?? providers;
     unawaited(_probe());
   }
 
@@ -62,25 +74,39 @@ class Api {
     if (user != null) await p.setString('user', jsonEncode(user));
   }
 
-  // Direct connection fails fast (3 s to connect) so a blocked route doesn't stall every request
-  final _http = IOClient(HttpClient()..connectionTimeout = const Duration(seconds: 3));
+  // Direct connection fails fast (4 s to connect) so a blocked route doesn't stall every request;
+  // idle connections live for a minute: a fresh TCP+TLS handshake costs seconds on a bad mobile network
+  final _http = IOClient(HttpClient()
+    ..connectionTimeout = const Duration(seconds: 4)
+    ..idleTimeout = const Duration(seconds: 60));
 
   // direct vs relay: decided by a background probe, remembered between launches
   bool? _direct;
   Future<bool>? _probing;
   DateTime _probed = DateTime(2000);
+  // all addresses race, the first one that answers wins
   Future<bool> _probe() => _probing ??= () async {
-        bool ok;
-        try {
-          final r = await _http.get(Uri.parse('$kServer/api/health')).timeout(const Duration(seconds: 4));
-          ok = r.statusCode == 200;
-        } catch (_) {
-          ok = false;
+        final won = Completer<String?>();
+        var left = kServers.length;
+        for (final s in kServers) {
+          _http.get(Uri.parse('$s/api/health')).timeout(const Duration(seconds: 5)).then((r) {
+            if (r.statusCode != 200) throw const HttpException('health');
+            final ps = (jsonDecode(r.body)['providers'] as List?)?.cast<String>();
+            if (ps != null && ps.isNotEmpty) providers = ps;
+            if (!won.isCompleted) won.complete(s);
+          }).catchError((_) {
+            if (--left == 0 && !won.isCompleted) won.complete(null);
+          });
         }
-        _direct = ok || kRelay.isEmpty;
+        final s = await won.future;
+        if (s != null) _base = s;
+        _direct = s != null || kRelay.isEmpty;
         _probed = DateTime.now();
         _probing = null;
-        (await SharedPreferences.getInstance()).setString('route', _direct! ? 'direct' : 'relay');
+        final p = await SharedPreferences.getInstance();
+        await p.setString('route', _direct! ? 'direct' : 'relay');
+        await p.setString('base', _base);
+        await p.setStringList('providers', providers);
         return _direct!;
       }();
   Future<bool> _useDirect() async {
@@ -126,21 +152,29 @@ class Api {
         _ => throw ArgumentError(method),
       };
 
+  static bool _netError(Object e) => e is SocketException || e is HttpException || e is http.ClientException || e is HandshakeException;
+
   Future<dynamic> req(String method, String path, [Object? body]) async {
-    final uri = Uri.parse('$kServer/api$path');
     final headers = {'content-type': 'application/json', if (token != null) 'authorization': 'Bearer $token'};
     final b = body == null ? null : jsonEncode(body);
+    Future<http.Response> direct() => _send(method, Uri.parse('$_base/api$path'), headers, b).timeout(const Duration(seconds: 60));
     http.Response r;
     try {
       if (await _useDirect()) {
         try {
-          r = await _send(method, uri, headers, b).timeout(const Duration(seconds: 60));
-        } on SocketException {
-          // the direct route just broke (VPN switched on, network changed): finish this request via the relay
-          if (kRelay.isEmpty) rethrow;
-          _direct = false;
-          _probed = DateTime.now();
-          r = await _viaRelay(method, path, b).timeout(const Duration(seconds: 60));
+          try {
+            r = await direct();
+          } catch (e) {
+            // a dropped connection on a flaky network: one quick retry for reads
+            if (method != 'GET' || !_netError(e)) rethrow;
+            await Future.delayed(const Duration(milliseconds: 800));
+            r = await direct();
+          }
+        } catch (e) {
+          if (!_netError(e)) rethrow;
+          // the route just broke (VPN switched on, network changed): try the other addresses, else the relay
+          _direct = null;
+          r = await _probe() ? await direct() : await _viaRelay(method, path, b).timeout(const Duration(seconds: 60));
         }
       } else {
         r = await _viaRelay(method, path, b).timeout(const Duration(seconds: 60));
@@ -160,22 +194,32 @@ class Api {
     return data;
   }
 
-  // ---- auth via Telegram bot ----
-  Future<Json> loginStart() async {
-    final r = await req('POST', '/auth/start', {'device': 'Android'}) as Json;
-    bot = r['bot'] ?? bot;
-    return r;
-  }
+  // ---- sign-in with VK ID / Google / Apple: the provider page opens in the browser, the app polls ----
+  Future<Json> loginStart(String provider) async => await req('POST', '/auth/start', {'provider': provider, 'device': 'Android'}) as Json;
 
-  /// returns true when the user confirmed the login in the bot
-  Future<bool> loginPoll(String code) async {
+  /// 'pending' while the user is still in the browser, 'ok' once signed in; throws ApiError when sign-in failed
+  Future<String> loginPoll(String code) async {
     final r = await req('GET', '/auth/poll?code=$code') as Json;
-    if (r['status'] != 'ok') return false;
+    final status = r['status'] as String;
+    if (status == 'error' || status == 'expired') throw ApiError((r['error'] ?? 'Вход не завершён, попробуйте ещё раз') as String, 400);
+    if (status != 'ok') return status;
     token = r['token'];
     user = r['user'];
     city = (user?['city'] ?? '') as String;
     await _save();
-    return true;
+    return status;
+  }
+
+  // ---- the Telegram bot is linked after sign-in ----
+  Future<Json> linkTelegram() async {
+    final r = await req('POST', '/link/telegram') as Json;
+    bot = (r['bot'] ?? bot) as String;
+    return r;
+  }
+
+  Future<void> unlinkTelegram() async {
+    await req('DELETE', '/link/telegram');
+    await refreshMe();
   }
 
   Future<void> logout({bool remote = true}) async {

@@ -74,8 +74,9 @@ class _AddScreenState extends State<AddScreen> {
         ]),
         Expanded(
           child: AnimatedSwitcher(
-            duration: const Duration(milliseconds: 400),
-            switchInCurve: spring,
+            duration: const Duration(milliseconds: 440),
+            switchInCurve: kSwitchIn,
+            switchOutCurve: kSwitchIn,
             child: _loading ? _loadingView() : _candidates != null ? _candidatesView(bottom) : _composer(bottom),
           ),
         ),

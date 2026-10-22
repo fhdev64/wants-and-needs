@@ -54,10 +54,13 @@ class _HotelkiAppState extends State<HotelkiApp> {
         highlightColor: Colors.transparent,
         textTheme: base.textTheme.apply(fontFamily: kFont, bodyColor: C.label, displayColor: C.label),
         textSelectionTheme: const TextSelectionThemeData(cursorColor: C.blue, selectionColor: Color(0x662F5BFF)),
+        pageTransitionsTheme: const PageTransitionsTheme(builders: {TargetPlatform.android: FadeThroughTransitions(), TargetPlatform.iOS: FadeThroughTransitions()}),
       ),
       builder: (context, child) => MediaQuery.withClampedTextScaling(maxScaleFactor: 1.25, child: Wallpaper(child: child!)),
       home: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 500),
+        duration: const Duration(milliseconds: 600),
+        switchInCurve: kSwitchIn,
+        switchOutCurve: kSwitchIn,
         child: Api.i.token == null ? LoginScreen(key: const ValueKey('login'), onDone: () => setState(() {})) : HomeScreen(key: const ValueKey('home'), onLogout: () => setState(() {})),
       ),
     );
@@ -83,7 +86,13 @@ class Logo extends StatelessWidget {
       );
 }
 
-// ======================= Login via Telegram =======================
+// ======================= Sign-in: VK ID / Google / Apple =======================
+const kProviders = {
+  'vk': (label: 'Войти с VK ID', bg: Color(0xFF0077FF), fg: Colors.white, border: Color(0x00000000)),
+  'google': (label: 'Войти через Google', bg: Colors.white, fg: Color(0xFF1F1F1F), border: Color(0x00000000)),
+  'apple': (label: 'Войти с Apple ID', bg: Colors.black, fg: Colors.white, border: Color(0x47FFFFFF)),
+};
+
 class LoginScreen extends StatefulWidget {
   final VoidCallback onDone;
   const LoginScreen({super.key, required this.onDone});
@@ -92,7 +101,7 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
-  bool _waiting = false;
+  String? _busy; // provider being started
   String? _code;
   Timer? _poll;
   DateTime? _until;
@@ -110,51 +119,51 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
     super.dispose();
   }
 
-  // returning from Telegram: check immediately instead of waiting for the next tick
+  // back from the browser: check right away instead of waiting for the next tick
   @override
   void didChangeAppLifecycleState(AppLifecycleState s) {
     if (s == AppLifecycleState.resumed && _code != null) _check();
   }
 
-  Future<void> _start() async {
-    setState(() => _waiting = true);
+  Future<void> _start(String provider) async {
+    setState(() => _busy = provider);
     try {
-      final r = await Api.i.loginStart();
+      final r = await Api.i.loginStart(provider);
       _code = r['code'];
       _until = DateTime.now().add(Duration(seconds: r['expiresIn'] ?? 600));
-      final tgApp = Uri.parse('tg://resolve?domain=${r['bot']}&start=login_${r['code']}');
-      if (!await launchUrl(tgApp, mode: LaunchMode.externalApplication)) {
-        await launchUrl(Uri.parse(r['url']), mode: LaunchMode.externalApplication);
-      }
+      // the system browser, not a WebView: Google refuses embedded views, and saved passwords live there
+      await launchUrl(Uri.parse(r['url']), mode: LaunchMode.externalApplication);
       _poll?.cancel();
       _poll = Timer.periodic(const Duration(seconds: 2), (_) => _check());
-      if (mounted) setState(() {});
     } catch (e) {
-      if (mounted) {
-        setState(() => _waiting = false);
-        toast(context, e.toString());
-      }
+      if (mounted) toast(context, e.toString());
     }
+    if (mounted) setState(() => _busy = null);
+  }
+
+  void _stop([String? msg]) {
+    _poll?.cancel();
+    _code = null;
+    if (!mounted) return;
+    setState(() {});
+    if (msg != null) toast(context, msg);
   }
 
   Future<void> _check() async {
-    if (_code == null) return;
-    if (_until != null && DateTime.now().isAfter(_until!)) {
-      _poll?.cancel();
-      _code = null;
-      if (mounted) {
-        setState(() => _waiting = false);
-        toast(context, 'Время вышло, попробуйте ещё раз');
-      }
-      return;
-    }
+    final code = _code;
+    if (code == null) return;
+    if (_until != null && DateTime.now().isAfter(_until!)) return _stop('Время вышло, попробуйте ещё раз');
     try {
-      if (await Api.i.loginPoll(_code!)) {
+      if (await Api.i.loginPoll(code) == 'ok') {
         _poll?.cancel();
         HapticFeedback.mediumImpact();
         widget.onDone();
       }
-    } catch (_) {}
+    } on ApiError catch (e) {
+      // a network hiccup is not a failed sign-in: only the server's verdict stops the wait
+      if (e.status == 0) return;
+      _stop(e.message);
+    }
   }
 
   @override
@@ -177,28 +186,67 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
           const SizedBox(height: 12),
           const Text('Список желаний и лучшие цены\nна Авито, Ozon, WB и в магазинах', textAlign: TextAlign.center, style: TextStyle(fontSize: 16, height: 1.45, color: C.label2)),
           const Spacer(flex: 4),
-          if (_waiting && _code != null) ...[
+          if (_code != null) ...[
             Glass(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
               child: Row(children: [
                 const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2.2, color: C.price)),
                 const SizedBox(width: 14),
-                const Expanded(child: Text('Нажмите «Войти» в боте и вернитесь сюда', style: TextStyle(fontSize: 14.5, color: C.label2))),
-                TextButton(onPressed: _start, child: const Text('Ещё раз', style: TextStyle(color: C.price, fontWeight: FontWeight.w700))),
+                const Expanded(child: Text('Завершите вход в браузере и вернитесь сюда', style: TextStyle(fontSize: 14.5, color: C.label2))),
+                TextButton(onPressed: () => _stop(), child: const Text('Отмена', style: TextStyle(color: C.price, fontWeight: FontWeight.w700))),
               ]),
             ),
             const SizedBox(height: 14),
           ],
-          SizedBox(
-            width: double.infinity,
-            child: Btn(_waiting && _code != null ? 'Открыть Telegram' : 'Войти через Telegram', icon: Icons.send_rounded, big: true, kind: BtnKind.primary, busy: _waiting && _code == null, onTap: _start),
-          ),
-          const SizedBox(height: 16),
-          Text('Откроется бот @${Api.i.bot} — нажмите в нём «Войти».\nХотелки общие для бота, компьютера и телефона.', textAlign: TextAlign.center, style: const TextStyle(fontSize: 12.5, height: 1.5, color: C.label3)),
+          for (final e in kProviders.entries)
+            if (Api.i.providers.contains(e.key))
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: _ProviderButton(id: e.key, label: e.value.label, bg: e.value.bg, fg: e.value.fg, border: e.value.border, busy: _busy == e.key, onTap: _busy == null ? () => _start(e.key) : null),
+              ),
+          const SizedBox(height: 6),
+          const Text('Хотелки общие для компьютера и телефона.\nТелеграм-бота можно привязать после входа.', textAlign: TextAlign.center, style: TextStyle(fontSize: 12.5, height: 1.5, color: C.label3)),
         ]),
       ),
     );
   }
+}
+
+class _ProviderButton extends StatelessWidget {
+  final String id, label;
+  final Color bg, fg, border;
+  final bool busy;
+  final VoidCallback? onTap;
+  const _ProviderButton({required this.id, required this.label, required this.bg, required this.fg, required this.border, required this.busy, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) => Press(
+        onTap: onTap,
+        scale: .97,
+        child: AnimatedOpacity(
+          duration: const Duration(milliseconds: 200),
+          opacity: onTap == null && !busy ? .6 : 1,
+          child: Container(
+            height: 56,
+            decoration: BoxDecoration(
+              color: bg,
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(color: border),
+              boxShadow: [BoxShadow(color: bg.withValues(alpha: id == 'apple' ? 0 : .35), blurRadius: 24, offset: const Offset(0, 10), spreadRadius: -10)],
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Row(children: [
+              Image.asset('assets/auth/$id.png', width: 22, height: 22, filterQuality: FilterQuality.medium),
+              Expanded(
+                child: busy
+                    ? Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2.2, color: fg)))
+                    : Text(label, textAlign: TextAlign.center, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: fg)),
+              ),
+              const SizedBox(width: 22),
+            ]),
+          ),
+        ),
+      );
 }
 
 // ======================= Home: tabs =======================
@@ -666,7 +714,93 @@ class ProfileScreen extends StatefulWidget {
   State<ProfileScreen> createState() => _ProfileScreenState();
 }
 
-class _ProfileScreenState extends State<ProfileScreen> {
+class _ProfileScreenState extends State<ProfileScreen> with WidgetsBindingObserver {
+  Timer? _linkPoll;
+  DateTime? _linkUntil;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _linkPoll?.cancel();
+    super.dispose();
+  }
+
+  // back from Telegram: see at once whether the bot is linked
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState s) {
+    if (s == AppLifecycleState.resumed && _linkPoll != null) _checkLink();
+  }
+
+  Future<void> _link() async {
+    try {
+      final r = await Api.i.linkTelegram();
+      final app = Uri.parse('tg://resolve?domain=${r['bot']}&start=link_${r['code']}');
+      if (!await launchUrl(app, mode: LaunchMode.externalApplication)) {
+        await launchUrl(Uri.parse(r['url']), mode: LaunchMode.externalApplication);
+      }
+      _linkUntil = DateTime.now().add(Duration(seconds: r['expiresIn'] ?? 600));
+      _linkPoll?.cancel();
+      _linkPoll = Timer.periodic(const Duration(seconds: 3), (_) => _checkLink());
+      if (mounted) setState(() {});
+    } catch (e) {
+      if (mounted) toast(context, e.toString());
+    }
+  }
+
+  Future<void> _checkLink() async {
+    if (_linkUntil != null && DateTime.now().isAfter(_linkUntil!)) {
+      _linkPoll?.cancel();
+      _linkPoll = null;
+      if (mounted) setState(() {});
+      return;
+    }
+    try {
+      await Api.i.refreshMe();
+      if (Api.i.user?['telegram'] == null) return;
+      _linkPoll?.cancel();
+      _linkPoll = null;
+      HapticFeedback.mediumImpact();
+      if (mounted) {
+        setState(() {});
+        toast(context, 'Telegram привязан');
+      }
+    } catch (_) {}
+  }
+
+  void _telegramSheet(Map tg) => glassSheet(
+        context,
+        (ctx) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
+          const Text('Телеграм-бот', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 6),
+          Text('Привязан${(tg['username'] ?? '') != '' ? ' @${tg['username']}' : ''}. Пишите боту @${Api.i.bot} название или фото товара — хотелки общие с приложением, туда же приходят уведомления о скидках.',
+              style: const TextStyle(color: C.label2, height: 1.45)),
+          const SizedBox(height: 18),
+          Btn('Открыть @${Api.i.bot}', icon: Icons.send_rounded, kind: BtnKind.primary, big: true, onTap: () {
+            Navigator.pop(ctx);
+            launchUrl(Uri.parse('https://t.me/${Api.i.bot}'), mode: LaunchMode.externalApplication);
+          }),
+          const SizedBox(height: 10),
+          Btn('Отвязать', kind: BtnKind.danger, big: true, onTap: () async {
+            Navigator.pop(ctx);
+            try {
+              await Api.i.unlinkTelegram();
+              if (mounted) {
+                setState(() {});
+                toast(context, 'Telegram отвязан');
+              }
+            } catch (e) {
+              if (mounted) toast(context, e.toString());
+            }
+          }),
+        ]),
+      );
+
   @override
   Widget build(BuildContext context) {
     final u = Api.i.user ?? {};
@@ -705,7 +839,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             child: Text(name.isEmpty ? '?' : name[0].toUpperCase(), style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w800)),
           ),
         ]),
-        Text([name, if ((u['username'] ?? '') != '') '@${u['username']}'].join(' · '), style: const TextStyle(color: C.label2, fontSize: 14)),
+        Text('$name · ${u['providerName'] ?? 'Telegram'}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: C.label2, fontSize: 14)),
         const SizedBox(height: 18),
         // blue summary card, like the balance card in the reference
         Glass(
@@ -737,7 +871,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
         const SizedBox(height: 22),
         row(Icons.place_rounded, 'Город', 'Авито ищет объявления рядом с вами', () => pickCity(context, () => setState(() {}))),
         const Divider(color: C.sep, height: 1),
-        row(Icons.send_rounded, 'Телеграм-бот', 'Пишите название или шлите фото — @${Api.i.bot}', () => launchUrl(Uri.parse('https://t.me/${Api.i.bot}'), mode: LaunchMode.externalApplication)),
+        if (u['telegram'] is Map)
+          row(Icons.send_rounded, 'Телеграм-бот', 'Привязан${(u['telegram']['username'] ?? '') != '' ? ' @${u['telegram']['username']}' : ''} · пишите @${Api.i.bot}', () => _telegramSheet(u['telegram'] as Map))
+        else
+          row(Icons.send_rounded, 'Привязать Telegram', _linkPoll != null ? 'Нажмите «Старт» в боте и вернитесь сюда' : 'Хотелки из бота и уведомления о скидках', _link),
         const Divider(color: C.sep, height: 1),
         row(Icons.shield_rounded, 'Безопасность покупок', 'Только оплата в рублях, проверка сайтов', () => toast(context, 'Подозрительные сайты и цены помечаем в карточке товара')),
         const Divider(color: C.sep, height: 1),

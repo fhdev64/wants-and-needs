@@ -1,7 +1,7 @@
 {
   "name": "wants-and-needs",
   "productName": "хотелкино ✦︎",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "хотелкино ✦︎ — список желаний и лучшие цены",
   "main": "main.js",
   "scripts": {
@@ -37,7 +37,7 @@
     "electron@33.4.11": true
   },
   "hotelki": {
-    "server": "http://188.120.246.113:8787",
+    "servers": ["https://188-120-246-113.sslip.io", "http://188.120.246.113:8787"],
     "relay": "https://script.google.com/macros/s/AKfycbwUT1HkVtJAN3v0aFr4EDNXbSxioRX4eip14RxOJ4ELEDTNzIEE2K_ozUUK-iZDmKLZiw/exec"
   }
 }

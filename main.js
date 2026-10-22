@@ -4,7 +4,11 @@ const fs = require('fs');
 const { avitoCity } = require('./server/src/shops-core');
 
 // The app is a thin client: wishlists, search and AI keys live on the server.
-const SERVER = (process.env.HOTELKI_SERVER || require('./package.json').hotelki.server).replace(/\/+$/, '');
+// Several addresses of the same server: https on 443 gets through mobile networks and DPI best,
+// the bare IP keeps working when DNS for the domain is broken.
+const CONF = require('./package.json').hotelki;
+const SERVERS = (process.env.HOTELKI_SERVER ? [process.env.HOTELKI_SERVER] : CONF.servers).map(s => s.replace(/\/+$/, ''));
+let SERVER = SERVERS[0];
 
 // keep the original data folder after the rename to «хотелкино ✦︎», so nobody gets logged out
 app.setPath('userData', process.env.HOTELKI_USERDATA || path.join(app.getPath('appData'), 'Хотелки'));
@@ -40,6 +44,8 @@ ipcMain.handle('win', (_, a) => {
 });
 ipcMain.handle('focus', () => { if (!win.isFocused()) win.focus(); win.webContents.focus(); });
 ipcMain.handle('open', (_, url) => { if (/^(https:\/\/|tg:\/\/)/.test(url)) shell.openExternal(url); });
+// sign-in finished in the browser: bring the app back to the front
+ipcMain.handle('raise', () => { if (win.isMinimized()) win.restore(); win.show(); win.setAlwaysOnTop(true); win.focus(); win.setAlwaysOnTop(false); });
 ipcMain.handle('data:get', () => load());
 ipcMain.handle('data:set', (_, d) => { save(d); return true; });
 ipcMain.handle('city:slug', (_, c) => avitoCity(c));
@@ -73,12 +79,18 @@ ipcMain.handle('notify', (_, alert) => {
 
 // all server calls go through the main process (no CORS/CSP issues, token never leaves this machine except to our server)
 // Fallback route through Google Apps Script (server/deploy/tg-relay.gs): some VPN exits
-// can't reach Russian hosting directly. Direct vs relay is decided by a quick probe.
-const RELAY = process.env.HOTELKI_RELAY ?? (require('./package.json').hotelki.relay || '');
+// can't reach Russian hosting directly. The probe races all direct addresses; the relay is used only when none answers.
+const RELAY = process.env.HOTELKI_RELAY ?? (CONF.relay || '');
 let direct = null, probed = 0, probing = null;
 const probe = () => probing ||= (async () => {
-  try { direct = (await fetch(SERVER + '/api/health', { signal: AbortSignal.timeout(4000) })).ok; }
-  catch { direct = false; }
+  try {
+    SERVER = await Promise.any(SERVERS.map(async s => {
+      const r = await fetch(s + '/api/health', { signal: AbortSignal.timeout(5000) });
+      if (!r.ok) throw new Error(r.status);
+      return s;
+    }));
+    direct = true;
+  } catch { direct = false; }
   direct ||= !RELAY; probed = Date.now(); probing = null;
   return direct;
 })();
@@ -104,17 +116,20 @@ async function viaRelay(method, p, body, token) {
 ipcMain.handle('srv', async (_, { method, path: p, body, token }) => {
   try {
     if (!(await useDirect())) return await viaRelay(method, p, body, token);
+    const call = () => fetch(SERVER + '/api' + p, {
+      method, headers: { 'content-type': 'application/json', ...(token ? { authorization: 'Bearer ' + token } : {}) },
+      body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(60000)
+    });
     let r;
     try {
-      r = await fetch(SERVER + '/api' + p, {
-        method, headers: { 'content-type': 'application/json', ...(token ? { authorization: 'Bearer ' + token } : {}) },
-        body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(60000)
-      });
+      // a dropped connection on a flaky network: one quick retry for reads
+      r = await call().catch(e => method === 'GET' && e.name !== 'TimeoutError' ? new Promise(ok => setTimeout(ok, 800)).then(call) : Promise.reject(e));
     } catch (e) {
-      // the direct route just broke (VPN switched on): finish this request via the relay
-      if (!RELAY || e.name === 'TimeoutError') throw e;
-      direct = false; probed = Date.now();
-      return await viaRelay(method, p, body, token);
+      if (e.name === 'TimeoutError') throw e;
+      // the direct route just broke (VPN switched on, network changed): look for another address, else the relay
+      direct = null;
+      if (await probe()) r = await call();
+      else return await viaRelay(method, p, body, token);
     }
     return { status: r.status, body: await r.json().catch(() => ({})) };
   } catch (e) {

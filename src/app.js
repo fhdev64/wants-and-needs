@@ -651,12 +651,20 @@ function closeSheet() { $('#sheet').classList.remove('open'); sheetState.id = nu
 $('#sheet').onclick = e => e.target.id === 'sheet' && closeSheet();
 
 // ---------- account ----------
+const PROVIDERS = {
+  vk: { label: 'Войти с VK ID', icon: '<svg viewBox="0 0 24 24"><path fill="#fff" d="M15.684 0H8.316C1.592 0 0 1.592 0 8.316v7.368C0 22.408 1.592 24 8.316 24h7.368C22.408 24 24 22.408 24 15.684V8.316C24 1.592 22.391 0 15.684 0zm3.692 17.123h-1.744c-.66 0-.862-.523-2.049-1.714-1.033-1-1.49-1.135-1.744-1.135-.356 0-.458.102-.458.593v1.575c0 .424-.135.678-1.253.678-1.846 0-3.896-1.118-5.335-3.202C4.624 10.857 4.03 8.57 4.03 8.096c0-.254.102-.491.593-.491h1.744c.44 0 .61.203.78.677.863 2.49 2.303 4.675 2.896 4.675.22 0 .322-.102.322-.66V9.721c-.068-1.186-.695-1.287-.695-1.71 0-.204.17-.407.44-.407h2.744c.373 0 .508.203.508.643v3.473c0 .372.17.508.271.508.22 0 .407-.136.813-.542 1.254-1.406 2.151-3.574 2.151-3.574.119-.254.322-.491.763-.491h1.744c.525 0 .644.27.525.643-.22 1.017-2.354 4.031-2.354 4.031-.186.305-.254.44 0 .78.186.254.796.779 1.203 1.253.745.847 1.32 1.558 1.473 2.05.17.49-.085.744-.576.744z"/></svg>' },
+  google: { label: 'Войти через Google', icon: '<svg viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.5 0 6.7 1.2 9.2 3.6l6.9-6.9C35.9 2.4 30.5 0 24 0 14.6 0 6.5 5.4 2.6 13.2l8 6.2C12.4 13.7 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M47 24.6c0-1.6-.2-3.1-.4-4.6H24v9h12.9c-.6 3-2.3 5.5-4.8 7.2l7.7 6c4.5-4.2 7.2-10.4 7.2-17.6z"/><path fill="#FBBC05" d="M10.5 28.6c-.5-1.5-.8-3-.8-4.6s.3-3.1.8-4.6l-8-6.2A24 24 0 0 0 0 24c0 3.9.9 7.5 2.6 10.8l7.9-6.2z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.7-6c-2.2 1.5-4.9 2.3-8.2 2.3-6.3 0-11.6-4.2-13.5-9.9l-8 6.2C6.5 42.6 14.6 48 24 48z"/></svg>' },
+  apple: { label: 'Войти с Apple ID', icon: '<svg viewBox="0 0 24 24"><path fill="#fff" d="M16.4 1.4c0 1.1-.5 2.3-1.2 3.1-.7.9-2 1.6-3 1.6h-.3l-.1-.4c0-1.2.6-2.3 1.2-3 .8-.9 2.2-1.6 3.3-1.7v.4zm4.5 15.7c0 .1-.5 1.6-1.5 3.1-.9 1.3-1.9 2.7-3.4 2.7s-1.9-.9-3.6-.9c-1.7 0-2.3.9-3.7.9s-2.3-1.3-3.4-2.8c-1.3-1.8-2.3-4.6-2.3-7.3 0-4.3 2.8-6.5 5.6-6.5 1.4 0 2.7.9 3.6.9.9 0 2.2-1 3.9-1 .6 0 2.9.1 4.4 2.2-.1.1-2.4 1.4-2.4 4.2 0 3.3 2.9 4.4 2.8 4.5z"/></svg>' }
+};
+const providerName = p => ({ vk: 'VK ID', google: 'Google', apple: 'Apple ID', tg: 'Telegram' })[p] || 'Telegram';
+
 function renderSettings(el) {
-  const u = data.settings.user || {};
+  const u = data.settings.user || {}, tg = u.telegram;
+  const bot = data.settings.bot || 'hotelkinobot';
   el.innerHTML = `<div class="form">
     <div class="frost account">
       <div class="avatar">${esc((u.name || u.username || '?').trim()[0]?.toUpperCase())}</div>
-      <div class="who"><b>${esc(u.name || 'Пользователь')}</b><span>${u.username ? '@' + esc(u.username) + ' · ' : ''}Telegram</span></div>
+      <div class="who"><b>${esc(u.name || 'Пользователь')}</b><span>${esc(providerName(u.provider))}${u.email ? ' · ' + esc(u.email) : ''}</span></div>
       ${btn('', 'Выйти', 'id="logout"')}
     </div>
     <div class="h-section">Поиск</div>
@@ -666,52 +674,93 @@ function renderSettings(el) {
 
     <p class="hint">Объявления Авито ищутся в этом городе, а нейросеть учитывает самовывоз и доставку. Город общий с ботом.</p>
     <div class="h-section">Телеграм-бот</div>
-    <p class="hint" style="margin-top:8px">Хотелки общие для бота, Windows и Android. В боте можно просто написать название товара или прислать фото.</p>
-    ${btn('', 'Открыть @' + esc(data.settings.bot || 'hotelkinobot'), 'id="openBot"')}
+    ${tg ? `<div class="frost tg-linked"><span class="tg-ic">${TG_ICON}</span><div class="who"><b>Привязан${tg.username ? ' @' + esc(tg.username) : ''}</b><span>Пишите боту @${esc(bot)} название или фото товара — хотелки общие с приложением</span></div></div>
+    <div class="row-btns">${btn('', 'Открыть бота', 'id="openBot"')}${btn('', 'Отвязать', 'id="unlinkTg"')}</div>`
+    : `<p class="hint" style="margin-top:8px">Привяжите бота — сможете добавлять хотелки прямо из Telegram и получать туда уведомления о скидках.</p>
+    ${btn('', 'Привязать Telegram', 'id="linkTg"')}
+    <div class="login-wait" id="tgWait" hidden><span class="spinner s"></span><span>Нажмите «Старт» в боте — привязка завершится сама</span></div>`}
   </div>`;
   cityPicker($('#c2'));
   $('#logout').onclick = () => logout();
-  $('#openBot').onclick = () => api.open('https://t.me/' + (data.settings.bot || 'hotelkinobot'));
+  if (tg) {
+    $('#openBot').onclick = () => api.open('https://t.me/' + bot);
+    $('#unlinkTg').onclick = async () => {
+      try { await srv('DELETE', '/link/telegram'); u.telegram = null; await persist(); rerender(); toast('Telegram отвязан'); } catch (e) { toast(errText(e)); }
+    };
+  } else $('#linkTg').onclick = linkTelegram;
+}
+const TG_ICON = '<svg viewBox="0 0 24 24"><path d="M21.5 4.5 2.9 11.7c-1 .4-1 1.7.1 2l4.6 1.5 1.8 5.6c.3.8 1.3 1 1.9.4l2.6-2.5 4.9 3.6c.7.5 1.7.1 1.9-.7l3.2-15c.2-1.1-.8-1.9-1.8-1.5zM9.6 14.6l-.6 4-1.5-4.7 10.3-6.5z"/></svg>';
+
+// link the bot: open t.me/<bot>?start=link_<code>, then watch /me until the bot reports back
+let linkPoll = null;
+async function linkTelegram() {
+  const b = $('#linkTg'); b.disabled = true;
+  try {
+    const r = await srv('POST', '/link/telegram');
+    data.settings.bot = r.bot;
+    api.open(r.url);
+    $('#tgWait').hidden = false;
+    clearInterval(linkPoll);
+    const until = Date.now() + r.expiresIn * 1000;
+    linkPoll = setInterval(async () => {
+      if (Date.now() > until || view !== 'settings') { clearInterval(linkPoll); if ($('#linkTg')) { $('#linkTg').disabled = false; $('#tgWait').hidden = true; } return; }
+      const u = await srv('GET', '/me').catch(() => null);
+      if (!u?.telegram) return;
+      clearInterval(linkPoll);
+      data.settings.user = u; await persist();
+      api.raise(); rerender(); toast('Telegram привязан');
+    }, 2500);
+  } catch (e) { b.disabled = false; toast(errText(e)); }
 }
 
-// ---------- login via Telegram bot ----------
+// ---------- sign-in: VK ID / Google / Apple in the browser, the app polls the server ----------
 let loginPoll = null;
 function showLogin() {
   document.body.classList.add('signed-out');
+  const on = data.settings.providers || Object.keys(PROVIDERS);
   $('#login').innerHTML = `<div class="login-card frost">
       <div class="login-logo"><span class="mark">✦</span></div>
       <h1>хотелкино ✦︎</h1>
       <p>Список желаний и лучшие цены<br>на Авито, Ozon, WB и в магазинах</p>
-      <button class="tg-btn" id="tgLogin"><svg viewBox="0 0 24 24"><path d="M21.5 4.5 2.9 11.7c-1 .4-1 1.7.1 2l4.6 1.5 1.8 5.6c.3.8 1.3 1 1.9.4l2.6-2.5 4.9 3.6c.7.5 1.7.1 1.9-.7l3.2-15c.2-1.1-.8-1.9-1.8-1.5zM9.6 14.6l-.6 4-1.5-4.7 10.3-6.5z"/></svg><span>Войти через Telegram</span><span class="arr"><svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></button>
-      <div class="login-wait" id="wait" hidden><span class="spinner s"></span><span>Подтвердите вход в боте — Telegram уже открыт</span></div>
-      <small>Откроется бот <b>@${esc(data.settings.bot || 'hotelkinobot')}</b> — нажмите в нём «Войти».<br>Хотелки будут общими для бота, компьютера и телефона.</small>
+      <div class="sso">${Object.entries(PROVIDERS).map(([k, p]) => `<button class="sso-btn ${k}" data-p="${k}" ${on.includes(k) ? '' : 'hidden'}>${p.icon}<span>${p.label}</span></button>`).join('')}</div>
+      <div class="login-wait" id="wait" hidden><span class="spinner s"></span><span>Завершите вход в браузере — приложение откроется само</span></div>
+      <small>Хотелки общие для компьютера и телефона.<br>Телеграм-бота можно привязать после входа.</small>
     </div>`;
-  $('#tgLogin').onclick = startLogin;
+  $('#login').querySelectorAll('.sso-btn').forEach(b => b.onclick = () => startLogin(b.dataset.p));
+  // show only the providers the server has keys for
+  srv('GET', '/health').then(h => {
+    if (!h.providers?.length) return;
+    data.settings.providers = h.providers;
+    $('#login').querySelectorAll('.sso-btn').forEach(b => b.hidden = !h.providers.includes(b.dataset.p));
+  }).catch(() => {});
 }
-async function startLogin() {
-  const b = $('#tgLogin'); b.disabled = true;
+async function startLogin(provider) {
+  const btns = [...$('#login').querySelectorAll('.sso-btn')];
+  const busy = on => btns.forEach(b => b.disabled = on);
+  busy(true);
   try {
-    const r = await srv('POST', '/auth/start', { device: 'Windows' });
-    data.settings.bot = r.bot;
+    const r = await srv('POST', '/auth/start', { provider, device: 'Windows' });
     api.open(r.url);
     $('#wait').hidden = false;
+    busy(false);
     clearInterval(loginPoll);
     const until = Date.now() + r.expiresIn * 1000;
+    const stop = msg => { clearInterval(loginPoll); $('#wait').hidden = true; if (msg) toast(msg); };
     loginPoll = setInterval(async () => {
-      if (Date.now() > until) { clearInterval(loginPoll); b.disabled = false; $('#wait').hidden = true; return toast('Время вышло, попробуйте ещё раз'); }
+      if (Date.now() > until) return stop('Время вышло, попробуйте ещё раз');
       const p = await srv('GET', '/auth/poll?code=' + r.code).catch(() => null);
-      if (p?.status === 'ok') {
-        clearInterval(loginPoll);
-        Object.assign(data.settings, { token: p.token, user: p.user, city: p.user.city || '' });
-        data.settings.citySlug = await api.citySlug(data.settings.city);
-        await persist(); enterApp(); toast('Привет, ' + (p.user.name || 'друг') + '!');
-      }
+      if (p?.status === 'error' || p?.status === 'expired') return stop(p.error || 'Вход не завершён, попробуйте ещё раз');
+      if (p?.status !== 'ok') return;
+      stop();
+      Object.assign(data.settings, { token: p.token, user: p.user, city: p.user.city || '' });
+      data.settings.citySlug = await api.citySlug(data.settings.city);
+      await persist(); api.raise(); enterApp(); toast('Привет, ' + (p.user.name || 'друг') + '!');
     }, 2000);
-  } catch (e) { b.disabled = false; toast(errText(e)); }
+  } catch (e) { busy(false); toast(errText(e)); }
 }
 async function logout(expired) {
   if (!expired) await srv('POST', '/auth/logout').catch(() => {});
-  data = { items: [], settings: { bot: data.settings.bot } };
+  data = { items: [], settings: { bot: data.settings.bot, providers: data.settings.providers } };
   await persist(); showLogin();
   if (expired) toast('Войдите снова');
 }

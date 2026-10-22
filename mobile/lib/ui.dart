@@ -529,15 +529,37 @@ void toast(BuildContext context, String text) {
     ));
 }
 
-Route<T> glassRoute<T>(Widget page) => PageRouteBuilder<T>(
-      transitionDuration: const Duration(milliseconds: 480),
-      reverseTransitionDuration: const Duration(milliseconds: 300),
-      pageBuilder: (_, _, _) => page,
-      transitionsBuilder: (_, a, _, child) {
-        final c = CurvedAnimation(parent: a, curve: const Cubic(.2, 1, .3, 1), reverseCurve: Curves.easeIn);
-        return FadeTransition(opacity: c, child: SlideTransition(position: Tween(begin: const Offset(0, .06), end: Offset.zero).animate(c), child: child));
-      },
-    );
+/// Fade-through: the old screen is gone before the new one appears, so the two never show at once
+/// (the pages are transparent over the shared wallpaper). A fully faded page is not painted at all,
+/// which also keeps its blurs out of the animation frames.
+Widget fadeThrough(Animation<double> a, Animation<double> s, Widget child) {
+  final enter = CurvedAnimation(parent: a, curve: const Interval(.3, 1, curve: Cubic(.2, 1, .3, 1)), reverseCurve: const Interval(.5, 1, curve: Curves.easeIn));
+  final exit = CurvedAnimation(parent: s, curve: const Interval(0, .3, curve: Curves.easeOut), reverseCurve: const Interval(0, .5, curve: Curves.easeOut));
+  return FadeTransition(
+    opacity: ReverseAnimation(exit),
+    child: FadeTransition(
+      opacity: enter,
+      child: SlideTransition(position: Tween(begin: const Offset(0, .04), end: Offset.zero).animate(enter), child: RepaintBoundary(child: child)),
+    ),
+  );
+}
+
+/// app-wide page transition (set in the theme). Pages are MaterialPageRoutes: Flutter animates the screen
+/// underneath only when the new route is a material one too, otherwise it would sit unfaded under the new page.
+class FadeThroughTransitions extends PageTransitionsBuilder {
+  const FadeThroughTransitions();
+  @override
+  Duration get transitionDuration => const Duration(milliseconds: 460);
+  @override
+  Duration get reverseTransitionDuration => const Duration(milliseconds: 340);
+  @override
+  Widget buildTransitions<T>(PageRoute<T> route, BuildContext context, Animation<double> a, Animation<double> s, Widget child) => fadeThrough(a, s, child);
+}
+
+Route<T> glassRoute<T>(Widget page) => MaterialPageRoute<T>(builder: (_) => page);
+
+/// AnimatedSwitcher curves for the same effect: the old child fades out in the first half, the new one in the second
+const kSwitchIn = Interval(.5, 1, curve: Curves.easeOut);
 
 /// content scrolling under the status bar is blurred and dimmed
 class ScrollEdge extends StatelessWidget {

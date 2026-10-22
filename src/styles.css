@@ -277,8 +277,13 @@ input::placeholder{color:var(--label3)}
 .form .hint{color:var(--label2);font-size:12.5px;line-height:1.5;margin:4px 14px 20px}
 
 /* ============ View transitions (smooth navigation) ============ */
-::view-transition-old(root){animation:vt-out .2s var(--ease) both}
-::view-transition-new(root){animation:vt-in .45s var(--spring) both}
+/* only the content area animates: the window chrome and wallpaper stay put instead of cross-fading with themselves,
+   and the old screen is gone before the new one appears, so the two never show at once */
+:root{view-transition-name:none}
+.content{view-transition-name:content}
+::view-transition-group(content){animation-duration:.4s}
+::view-transition-old(content){animation:vt-out .14s var(--ease) both}
+::view-transition-new(content){animation:vt-in .34s var(--spring) .1s both}
 @keyframes vt-out{to{opacity:0}}
 @keyframes vt-in{from{opacity:0;transform:translateY(6px)}}
 
@@ -296,7 +301,7 @@ input::placeholder{color:var(--label3)}
 button.chip{cursor:pointer}
 button.chip:hover{filter:brightness(1.2)}
 
-/* ============ Login (Telegram) ============ */
+/* ============ Login (VK ID / Google / Apple) ============ */
 .login{position:fixed;inset:0;z-index:30;display:none;place-items:center;padding:24px}
 body.signed-out .login{display:grid}
 body.signed-out .sidebar,body.signed-out .toolbar,body.signed-out .content{display:none}
@@ -308,12 +313,22 @@ body.signed-out .sidebar,body.signed-out .toolbar,body.signed-out .content{displ
 .login-card h1{font-size:30px;font-weight:700;letter-spacing:-.6px}
 .login-card p{color:var(--label2);font-size:14.5px;line-height:1.5;margin-bottom:10px}
 .login-card small{color:var(--label3);font-size:12px;line-height:1.55;margin-top:6px}
-.tg-btn{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;height:54px;border-radius:999px;font-size:16px;font-weight:600;color:#fff;
-  background:linear-gradient(180deg,#36aef0,#1f8fd6);box-shadow:inset 0 1px 0 rgba(255,255,255,.4);transition:transform .5s var(--spring-bouncy),filter .2s}
-.tg-btn:hover{filter:brightness(1.08)}
-.tg-btn:active{transform:scale(.97)}
-.tg-btn:disabled{opacity:.6}
-.tg-btn svg{width:22px;height:22px;fill:#fff}
+.sso{display:flex;flex-direction:column;gap:10px;width:100%}
+.sso-btn{position:relative;display:flex;align-items:center;justify-content:center;gap:12px;width:100%;height:54px;border-radius:999px;font:inherit;font-size:16px;font-weight:600;cursor:pointer;
+  border:1px solid transparent;transition:transform .5s var(--spring-bouncy),filter .2s,opacity .2s}
+.sso-btn[hidden]{display:none}
+.sso-btn svg{position:absolute;left:20px;width:22px;height:22px}
+.sso-btn:hover{filter:brightness(1.08)}
+.sso-btn:active{transform:scale(.97)}
+.sso-btn:disabled{opacity:.6;pointer-events:none}
+.sso-btn.vk{background:#0077ff;color:#fff;box-shadow:0 12px 30px -12px rgba(0,119,255,.9),inset 0 1px 0 rgba(255,255,255,.25)}
+.sso-btn.google{background:#fff;color:#1f1f1f;box-shadow:0 12px 30px -14px rgba(255,255,255,.5)}
+.sso-btn.apple{background:#000;color:#fff;border-color:rgba(255,255,255,.28)}
+/* linked Telegram in the account screen */
+.tg-linked{display:flex;align-items:center;gap:14px;padding:14px 16px;margin-top:10px}
+.tg-ic{width:42px;height:42px;flex:none;border-radius:50%;display:grid;place-items:center;background:linear-gradient(140deg,#36aef0,#1f8fd6)}
+.tg-ic svg{width:22px;height:22px;fill:#fff}
+.row-btns{display:flex;gap:10px;margin-top:12px}
 .login-wait{display:flex;align-items:center;gap:10px;color:var(--label2);font-size:13px}
 .login-wait[hidden]{display:none}
 /* account card */
@@ -415,9 +430,6 @@ body{font-family:var(--font);font-weight:500;letter-spacing:-.01em}
 /* login: blue tile with the ✦ mark */
 .login-logo{background:linear-gradient(135deg,#3b66ff,#1a2fb8 55%,#0e1440);box-shadow:0 16px 50px -10px rgba(47,91,255,.7);border:1px solid rgba(255,255,255,.2)}
 .login-logo .mark{font-size:44px;line-height:1;color:#fff}
-.tg-btn{background:linear-gradient(90deg,#3b66ff,#1a3bf0);box-shadow:0 12px 30px -10px rgba(47,91,255,.8);justify-content:space-between;padding:0 6px 0 22px}
-.tg-btn .arr{display:grid;place-items:center;width:42px;height:42px;border-radius:50%;background:rgba(255,255,255,.2)}
-.tg-btn .arr svg{width:20px;height:20px;fill:none;stroke:#fff;stroke-width:2.4}
 
 /* account card like the reference balance card */
 .account{background:linear-gradient(135deg,#2448f5,#14246e 55%,#111628)!important}

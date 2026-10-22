@@ -4,7 +4,7 @@
 // put the /exec URL into server/.env as TG_RELAY=...
 // The same web app is the fallback route to the hotelkino API for clients behind a VPN:
 // some VPN exits can't reach Russian hosting directly, but Google can.
-var API = 'http://188.120.246.113/api';
+var API = 'https://188-120-246-113.sslip.io/api';
 
 function doPost(e) {
   var b = JSON.parse(e.postData.contents);

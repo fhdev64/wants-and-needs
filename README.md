@@ -42,7 +42,7 @@
 - **Android:** установите `app-release.apk`.
 - **Telegram:** бот [@hotelkinobot](https://t.me/hotelkinobot).
 
-Вход в приложения выполняется через бота. Хотелки общие для бота, компьютера и телефона и хранятся на сервере. Ключ нейросети есть только на сервере.
+Вход в приложения — через **VK ID, Google или Apple ID** (страница входа открывается в браузере, затем приложение открывается само). Телеграм-бота можно привязать после входа: «Профиль → Привязать Telegram». Хотелки общие для бота, компьютера и телефона и хранятся на сервере. Ключи нейросети и провайдеров входа есть только на сервере.
 
 ## Сервер
 
@@ -52,17 +52,33 @@
 scp server/deploy/setup.sh root@HOST:/root/ && ssh root@HOST bash /root/setup.sh
 ```
 
-Затем положите секреты в `/opt/hotelki/server/.env` (`BOT_TOKEN`, `AI_PROVIDER`, `AI_KEY`, `PUBLIC_URL`) и выполните `systemctl restart hotelki`.
+`setup.sh` ставит Caddy: API отвечает по https на 443 (адрес вида `188-120-246-113.sslip.io`, сертификат Let's Encrypt получается сам; можно задать свой домен `DOMAIN=...`). Порт 8787 остаётся запасным маршрутом.
+
+Затем положите секреты в `/opt/hotelki/server/.env` и выполните `systemctl restart hotelki`:
+
+| Переменная | Что это |
+|---|---|
+| `AI_PROVIDER`, `AI_KEY` | нейросеть |
+| `PUBLIC_URL` | https-адрес сервера, например `https://188-120-246-113.sslip.io` |
+| `VK_CLIENT_ID` | [id.vk.com/business](https://id.vk.com/business/go) → приложение типа «Web», доверенный Redirect URL `PUBLIC_URL/auth/cb/vk`, доступ к почте |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Google Cloud → Credentials → OAuth client «Web application», redirect URI `PUBLIC_URL/auth/cb/google` |
+| `APPLE_CLIENT_ID`, `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY` | developer.apple.com: Services ID с Sign in with Apple, Return URL `PUBLIC_URL/auth/cb/apple`; ключ .p8 — путь к файлу или содержимое с `
+` |
+| `BOT_TOKEN`, `TG_RELAY` | необязательно: Телеграм-бот для привязки |
+
+Способ входа без ключей просто не показывается в приложениях.
 
 С российского хостинга `api.telegram.org`, nodejs.org и npmjs недоступны:
 - Node.js и npm-пакеты `setup.sh` берёт с зеркал;
-- запросы бота идут через прокси на Google Apps Script. Код прокси лежит в `server/deploy/tg-relay.gs`. Опубликуйте его как веб-приложение с доступом «Все» и укажите URL в `.env` как `TG_RELAY=`.
+- запросы бота идут через прокси на Google Apps Script. Код прокси лежит в `server/deploy/tg-relay.gs`. Опубликуйте его как веб-приложение с доступом «Все» и укажите URL в `.env` как `TG_RELAY=`. Этот же прокси — запасной маршрут к API для клиентов за VPN.
+
+Сеть в приложениях: при запуске они параллельно опрашивают https-домен и IP:8787 и работают через тот адрес, что ответил первым; если оба недоступны (VPN, блокировки) — через Apps Script. Ответы API сжимаются gzip, соединения держатся открытыми между запросами, оборвавшиеся GET-запросы повторяются.
 
 ## Сборка из исходников
 
 ```bash
-npm install && npm run dist                     # dist/hotelkino.exe (адрес сервера: package.json → hotelki.server)
-cd mobile && flutter build apk --release --dart-define=SERVER=http://HOST:8787
+npm install && npm run dist                     # dist/hotelkino.exe (адреса сервера: package.json → hotelki.servers)
+cd mobile && flutter build apk --release        # адреса по умолчанию в lib/api.dart, свои: --dart-define=SERVER=https://...,http://...
 cd server && npm install && node src/index.js   # локальный сервер
 ```
 
@@ -72,7 +88,7 @@ cd server && npm install && node src/index.js   # локальный серве�
 main.js, preload.js   — Electron: окно, мост к серверу (IPC srv), фирменные уведомления
 src/                  — интерфейс ПК (app.js, styles.css, notify.*)
 mobile/lib/           — Flutter-приложение (main, product, ui, api, notify)
-server/src/           — api, bot, search, shops (Puppeteer), ai, watch (история цен, уведомления), db (SQLite)
+server/src/           — api, oauth (VK ID, Google, Apple), bot, search, shops (Puppeteer), ai, watch (история цен, уведомления), db (SQLite)
 server/deploy/        — setup.sh для VPS, tg-relay.gs
 ```
 

@@ -40,8 +40,21 @@ mkdir -p data && chown -R hotelki:hotelki "$DIR/server" /home/hotelki
 # puppeteer downloads Chrome into root's cache; give the service user its own copy
 sudo -u hotelki -H bash -c "cd $DIR/server && npx puppeteer browsers install chrome" >/dev/null
 
-# the app listens on 8787; allow it through the firewall, keep SSH
-ufw allow OpenSSH >/dev/null; ufw allow 8787/tcp >/dev/null; ufw --force enable >/dev/null
+# https on 443 in front of the app: OAuth providers (VK ID, Google, Apple) need an https callback, and 443
+# gets through mobile networks and DPI far better than a bare port. No domain of your own? <ip-with-dashes>.sslip.io
+# resolves to the server, and Caddy gets a Let's Encrypt certificate for it automatically.
+DOMAIN=${DOMAIN:-$(curl -fsS4 https://ifconfig.me | tr . -).sslip.io}
+apt-get install -y caddy
+cat > /etc/caddy/Caddyfile <<CADDY
+$DOMAIN {
+  encode zstd gzip
+  reverse_proxy 127.0.0.1:8787
+}
+CADDY
+systemctl reload caddy || systemctl restart caddy
+
+# 8787 stays open as a fallback route for the apps (when DNS for the domain fails)
+ufw allow OpenSSH >/dev/null; ufw allow 80/tcp >/dev/null; ufw allow 443/tcp >/dev/null; ufw allow 8787/tcp >/dev/null; ufw --force enable >/dev/null
 
 cat > /etc/systemd/system/hotelki.service <<'UNIT'
 [Unit]
@@ -63,4 +76,4 @@ WantedBy=multi-user.target
 UNIT
 systemctl daemon-reload
 systemctl enable hotelki >/dev/null
-echo "setup done"
+echo "setup done: https://$DOMAIN — put PUBLIC_URL=https://$DOMAIN into server/.env"
