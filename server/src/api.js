@@ -90,14 +90,16 @@ const route = (method, pattern, auth, fn) => routes.push({ method, re: new RegEx
 const userOf = req => sessions.user((req.headers.authorization || '').replace(/^Bearer\s+/i, ''));
 const fail = (status, msg) => { throw Object.assign(new Error(msg), { status }); };
 
-route('GET', '/api/health', false, () => ({ ok: true, bot: botUsername, providers: oauth.enabled() }));
+// vkClientId / googleClientId let the Android app sign in through the VK app and the system Google account picker
+route('GET', '/api/health', false, () => ({ ok: true, bot: botUsername, providers: oauth.enabled(), vkClientId: cfg.oauth.vk.androidClientId, googleClientId: cfg.oauth.google.clientId }));
 
 route('POST', '/api/auth/start', false, ({ body }) => {
   if (!body.provider) fail(400, 'Вход через Telegram больше не работает — обновите приложение');
   const p = oauth.get(String(body.provider)) || fail(400, 'Этот способ входа пока недоступен');
   const code = crypto.randomBytes(32).toString('hex'), verifier = crypto.randomBytes(48).toString('base64url');
   logins.set(code, { provider: body.provider, verifier, status: 'pending', device: String(body.device || '').slice(0, 60), exp: Date.now() + 10 * 60e3 });
-  return { code, url: p.url(code, verifier), expiresIn: 600 };
+  // challenge: for the VK ID SDK, which sends the code to the app; the server swaps it at /api/auth/vk/code
+  return { code, url: p.url(code, verifier), challenge: oauth.challenge(verifier), expiresIn: 600 };
 });
 route('GET', '/api/auth/poll', false, ({ query }) => {
   const code = query.get('code') || '', l = logins.get(code);
@@ -106,6 +108,29 @@ route('GET', '/api/auth/poll', false, ({ query }) => {
   logins.delete(code);
   if (l.status === 'error') return { status: 'error', error: l.error };
   return { status: 'ok', token: l.token, user: profile(users.get(l.userId)) };
+});
+// native sign-in on Android: the app already holds the provider's answer, the session comes back at once
+async function nativeSignIn(provider, device, getProfile) {
+  let p;
+  try {
+    p = await getProfile();
+  } catch (e) {
+    console.error('oauth native', provider, e.message);
+    fail(400, `Не удалось войти через ${oauth.NAMES[provider]}`);
+  }
+  if (!p.sub || p.sub === 'undefined') fail(400, `Не удалось войти через ${oauth.NAMES[provider]}`);
+  const userId = signIn(provider, p);
+  return { status: 'ok', token: sessions.create(userId, device), user: profile(users.get(userId)) };
+}
+route('POST', '/api/auth/vk/code', false, async ({ body }) => {
+  const state = String(body.state || ''), l = logins.get(state);
+  if (!l || l.exp < Date.now() || l.status !== 'pending' || l.provider !== 'vk' || !oauth.get('vk')) fail(400, 'Вход не завершён, попробуйте ещё раз');
+  logins.delete(state);
+  return nativeSignIn('vk', l.device, () => oauth.get('vk').profile({ code: String(body.code || ''), device_id: String(body.deviceId || ''), state }, l.verifier, oauth.vkAppRedirect(), cfg.oauth.vk.androidClientId));
+});
+route('POST', '/api/auth/google/token', false, async ({ body }) => {
+  if (!cfg.oauth.google.clientId) fail(400, 'Этот способ входа пока недоступен');
+  return nativeSignIn('google', String(body.device || '').slice(0, 60), () => oauth.googleIdToken(String(body.idToken || '')));
 });
 route('POST', '/api/auth/logout', true, ({ req }) => { sessions.drop((req.headers.authorization || '').replace(/^Bearer\s+/i, '')); return { ok: true }; });
 

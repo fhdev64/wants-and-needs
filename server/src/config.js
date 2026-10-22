@@ -28,7 +28,8 @@ const cfg = {
   publicUrl: (process.env.PUBLIC_URL || 'http://localhost:8787').replace(/\/+$/, ''),
   // sign-in providers; a provider without its keys is simply not offered in the apps
   oauth: {
-    vk: { clientId: env('VK_CLIENT_ID') },
+    // androidClientId: the app id of the Android platform when VK ID gave it its own (sign-in through the VK app)
+    vk: { clientId: env('VK_CLIENT_ID'), androidClientId: env('VK_ANDROID_CLIENT_ID') || env('VK_CLIENT_ID') },
     google: { clientId: env('GOOGLE_CLIENT_ID'), secret: env('GOOGLE_CLIENT_SECRET') },
     // Services ID, Team ID, key id and the .p8 key (file path or the key itself) from developer.apple.com
     apple: { clientId: env('APPLE_CLIENT_ID'), teamId: env('APPLE_TEAM_ID'), keyId: env('APPLE_KEY_ID'), key: env('APPLE_PRIVATE_KEY') }

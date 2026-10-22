@@ -2,6 +2,8 @@ allprojects {
     repositories {
         google()
         mavenCentral()
+        // VK ID SDK is published only here
+        maven("https://nexus-external.vkteam.ru/repository/maven/")
     }
 }
 

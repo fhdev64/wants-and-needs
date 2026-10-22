@@ -41,6 +41,10 @@ class Api {
 
   /// sign-in providers the server has keys for (vk, google, apple)
   List<String> providers = const ['vk', 'google', 'apple'];
+
+  /// VK ID app id and Google web client id: with them Android signs in through the VK app / the system account picker
+  String vkClientId = '';
+  String googleClientId = '';
   String _base = kServers.first;
   final _authLost = StreamController<void>.broadcast();
   Stream<void> get onAuthLost => _authLost.stream;
@@ -60,6 +64,8 @@ class Api {
     final base = p.getString('base');
     if (base != null && kServers.contains(base)) _base = base;
     providers = p.getStringList('providers') ?? providers;
+    vkClientId = p.getString('vkClientId') ?? '';
+    googleClientId = p.getString('googleClientId') ?? '';
     unawaited(_probe());
   }
 
@@ -91,8 +97,11 @@ class Api {
         for (final s in kServers) {
           _http.get(Uri.parse('$s/api/health')).timeout(const Duration(seconds: 5)).then((r) {
             if (r.statusCode != 200) throw const HttpException('health');
-            final ps = (jsonDecode(r.body)['providers'] as List?)?.cast<String>();
+            final j = jsonDecode(r.body) as Json;
+            final ps = (j['providers'] as List?)?.cast<String>();
             if (ps != null && ps.isNotEmpty) providers = ps;
+            vkClientId = (j['vkClientId'] ?? '') as String;
+            googleClientId = (j['googleClientId'] ?? '') as String;
             if (!won.isCompleted) won.complete(s);
           }).catchError((_) {
             if (--left == 0 && !won.isCompleted) won.complete(null);
@@ -107,6 +116,8 @@ class Api {
         await p.setString('route', _direct! ? 'direct' : 'relay');
         await p.setString('base', _base);
         await p.setStringList('providers', providers);
+        await p.setString('vkClientId', vkClientId);
+        await p.setString('googleClientId', googleClientId);
         return _direct!;
       }();
   Future<bool> _useDirect() async {
@@ -203,12 +214,24 @@ class Api {
     final status = r['status'] as String;
     if (status == 'error' || status == 'expired') throw ApiError((r['error'] ?? 'Вход не завершён, попробуйте ещё раз') as String, 400);
     if (status != 'ok') return status;
+    await _signedIn(r);
+    return status;
+  }
+
+  Future<void> _signedIn(Json r) async {
     token = r['token'];
     user = r['user'];
     city = (user?['city'] ?? '') as String;
     await _save();
-    return status;
   }
+
+  /// the VK app returned an authorization code for the sign-in [state] started with [loginStart]
+  Future<void> loginVkCode(String state, String code, String deviceId) async =>
+      _signedIn(await req('POST', '/auth/vk/code', {'state': state, 'code': code, 'deviceId': deviceId}) as Json);
+
+  /// an ID token from the Android account picker, issued to [googleClientId]
+  Future<void> loginGoogleToken(String idToken) async =>
+      _signedIn(await req('POST', '/auth/google/token', {'idToken': idToken, 'device': 'Android'}) as Json);
 
   // ---- the Telegram bot is linked after sign-in ----
   Future<Json> linkTelegram() async {

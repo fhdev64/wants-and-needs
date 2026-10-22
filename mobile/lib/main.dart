@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'api.dart';
@@ -125,20 +127,73 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
     if (s == AppLifecycleState.resumed && _code != null) _check();
   }
 
+  static const _vk = MethodChannel('hotelkino/vkid');
+  static bool _googleReady = false;
+  // a provider whose app sign-in was cancelled or failed goes to the browser on the next tap
+  static final _browserOnly = <String>{};
+
   Future<void> _start(String provider) async {
     setState(() => _busy = provider);
     try {
-      final r = await Api.i.loginStart(provider);
-      _code = r['code'];
-      _until = DateTime.now().add(Duration(seconds: r['expiresIn'] ?? 600));
-      // the system browser, not a WebView: Google refuses embedded views, and saved passwords live there
-      await launchUrl(Uri.parse(r['url']), mode: LaunchMode.externalApplication);
-      _poll?.cancel();
-      _poll = Timer.periodic(const Duration(seconds: 2), (_) => _check());
+      final native = Platform.isAndroid && !_browserOnly.contains(provider) ? await _native(provider) : false;
+      if (native == true) {
+        HapticFeedback.mediumImpact();
+        widget.onDone();
+      } else if (native == false) {
+        await _browser(provider);
+      }
     } catch (e) {
       if (mounted) toast(context, e.toString());
     }
     if (mounted) setState(() => _busy = null);
+  }
+
+  /// Sign-in through the VK app or the system Google account picker: true when signed in,
+  /// null when the user cancelled it, false when it isn't possible here (no keys, no VK app, errors) → browser.
+  Future<bool?> _native(String provider) async {
+    try {
+      if (provider == 'vk' && Api.i.vkClientId.isNotEmpty) {
+        // null without the VK app; a build made for another VK app id can't receive the code either
+        if (await _vk.invokeMethod<String>('clientId') != Api.i.vkClientId) return false;
+        final r = await Api.i.loginStart('vk');
+        final c = await _vk.invokeMapMethod<String, dynamic>('login', {'state': r['code'], 'challenge': r['challenge']});
+        await Api.i.loginVkCode(r['code'] as String, c!['code'] as String, (c['deviceId'] ?? '') as String);
+        return true;
+      }
+      if (provider == 'google' && Api.i.googleClientId.isNotEmpty) {
+        final g = GoogleSignIn.instance;
+        if (!_googleReady) {
+          // the ID token is issued to the server's web client; the Android client is matched by package + SHA-1
+          await g.initialize(serverClientId: Api.i.googleClientId);
+          _googleReady = true;
+        }
+        if (!g.supportsAuthenticate()) return false;
+        final token = (await g.authenticate()).authentication.idToken;
+        if (token == null) return false;
+        await Api.i.loginGoogleToken(token);
+        return true;
+      }
+    } on PlatformException catch (e) {
+      _browserOnly.add(provider);
+      if (e.code == 'cancelled') return null;
+    } on GoogleSignInException catch (e) {
+      _browserOnly.add(provider);
+      // a misconfigured client also shows up as "canceled": the next tap opens the browser
+      if (e.code == GoogleSignInExceptionCode.canceled) return null;
+    } catch (_) {
+      _browserOnly.add(provider);
+    }
+    return false;
+  }
+
+  Future<void> _browser(String provider) async {
+    final r = await Api.i.loginStart(provider);
+    _code = r['code'];
+    _until = DateTime.now().add(Duration(seconds: r['expiresIn'] ?? 600));
+    // the system browser, not a WebView: Google refuses embedded views, and saved passwords live there
+    await launchUrl(Uri.parse(r['url']), mode: LaunchMode.externalApplication);
+    _poll?.cancel();
+    _poll = Timer.periodic(const Duration(seconds: 2), (_) => _check());
   }
 
   void _stop([String? msg]) {

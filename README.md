@@ -42,7 +42,7 @@
 - **Android:** установите `app-release.apk`.
 - **Telegram:** бот [@hotelkinobot](https://t.me/hotelkinobot).
 
-Вход в приложения — через **VK ID, Google или Apple ID** (страница входа открывается в браузере, затем приложение открывается само). Телеграм-бота можно привязать после входа: «Профиль → Привязать Telegram». Хотелки общие для бота, компьютера и телефона и хранятся на сервере. Ключи нейросети и провайдеров входа есть только на сервере.
+Вход в приложения — через **VK ID, Google или Apple ID** (страница входа открывается в браузере, затем приложение открывается само). На Android «Войти с VK ID» открывает установленное приложение VK, а «Войти через Google» — системный выбор аккаунта; если это невозможно (нет приложения VK, ключи не зарегистрированы, ошибка или отмена), вход идёт через браузер. Телеграм-бота можно привязать после входа: «Профиль → Привязать Telegram». Хотелки общие для бота, компьютера и телефона и хранятся на сервере. Ключи нейросети и провайдеров входа есть только на сервере.
 
 ## Сервер
 
@@ -64,9 +64,25 @@ scp server/deploy/setup.sh root@HOST:/root/ && ssh root@HOST bash /root/setup.sh
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Google Cloud → Credentials → OAuth client «Web application», redirect URI `PUBLIC_URL/auth/cb/google` |
 | `APPLE_CLIENT_ID`, `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY` | developer.apple.com: Services ID с Sign in with Apple, Return URL `PUBLIC_URL/auth/cb/apple`; ключ .p8 — путь к файлу или содержимое с `
 ` |
+| `VK_ANDROID_CLIENT_ID` | необязательно: ID Android-платформы в VK ID, если он отличается от `VK_CLIENT_ID` (см. «Вход через приложения на Android») |
 | `BOT_TOKEN`, `TG_RELAY` | необязательно: Телеграм-бот для привязки |
 
 Способ входа без ключей просто не показывается в приложениях.
+
+### Вход через приложения на Android
+
+Пакет приложения — `app.hotelki.hotelki`. Релизный APK пока подписан **debug-ключом** той машины, где его собирали; отпечатки берутся так:
+
+```bash
+keytool -list -v -keystore ~/.android/debug.keystore -alias androiddebugkey -storepass android
+```
+
+Для debug-ключа на машине сборки сейчас: SHA-1 `72:72:5D:3D:94:A0:64:93:6F:15:91:ED:03:60:CC:4D:76:15:C1:74`, SHA-256 `C0:6D:6A:E6:34:49:2C:82:18:43:51:17:D1:D7:75:90:F7:67:36:D2:17:FC:67:39:9F:75:B0:EB:5A:4F:A0:8F`. Если перейти на свой ключ подписи, отпечатки нужно поменять в обоих кабинетах.
+
+- **VK ID** ([id.vk.com/business](https://id.vk.com/business/go)): в приложении добавьте платформу **Android** — пакет `app.hotelki.hotelki` и SHA-1 отпечаток (если форма не принимает двоеточия, вводите без них). Redirect URL для Android — `vk<ID приложения>://vk.ru/blank.html`. ID вписывается в сборку: `vkClientId=<ID>` в `mobile/android/local.properties` (или `flutter build apk --android-project-arg=vkClientId=<ID>`). Если у Android-платформы свой ID, укажите его и на сервере в `VK_ANDROID_CLIENT_ID`. Код из приложения VK обменивает сервер (PKCE, `POST /api/auth/vk/code`), секретов в APK нет. Сборка без `vkClientId` или с ID, не совпадающим с сервером, входит через браузер.
+- **Google** (Google Cloud → Credentials): создайте ещё один OAuth client типа **Android** — пакет `app.hotelki.hotelki` и SHA-1. Его ID никуда вписывать не нужно: приложение просит токен для веб-клиента (`GOOGLE_CLIENT_ID`, сервер отдаёт его в `/api/health`), а сервер проверяет `aud` через `oauth2.googleapis.com/tokeninfo` (`POST /api/auth/google/token`). Android-клиент и веб-клиент должны быть в одном проекте Google Cloud.
+
+Если вход через приложение отменён или сломался, следующее нажатие той же кнопки сразу открывает браузер.
 
 С российского хостинга `api.telegram.org`, nodejs.org и npmjs недоступны:
 - Node.js и npm-пакеты `setup.sh` берёт с зеркал;
@@ -78,7 +94,7 @@ scp server/deploy/setup.sh root@HOST:/root/ && ssh root@HOST bash /root/setup.sh
 
 ```bash
 npm install && npm run dist                     # dist/hotelkino.exe (адреса сервера: package.json → hotelki.servers)
-cd mobile && flutter build apk --release        # адреса по умолчанию в lib/api.dart, свои: --dart-define=SERVER=https://...,http://...
+cd mobile && flutter build apk --release        # адреса по умолчанию в lib/api.dart, свои: --dart-define=SERVER=https://...,http://...; VK ID SDK — vkClientId в android/local.properties
 cd server && npm install && node src/index.js   # локальный сервер
 ```
 

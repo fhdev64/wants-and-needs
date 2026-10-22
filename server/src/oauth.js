@@ -34,14 +34,15 @@ const PROVIDERS = {
       response_type: 'code', client_id: o.vk.clientId, redirect_uri: redirectUri('vk'), state,
       code_challenge: challenge(verifier), code_challenge_method: 'S256', scope: 'email'
     }),
-    async profile(q, verifier) {
+    // redirect: the Android VK ID SDK gets the code at vk<client_id>://vk.ru/blank.html and hands it to us
+    async profile(q, verifier, redirect = redirectUri('vk'), clientId = o.vk.clientId) {
       // VK ID returns code/device_id/state as query params (older flows pack them into a JSON `payload`)
       const p = q.payload ? JSON.parse(q.payload) : q;
       const t = await post('https://id.vk.ru/oauth2/auth', {
-        grant_type: 'authorization_code', code: p.code, code_verifier: verifier, client_id: o.vk.clientId,
-        device_id: p.device_id || '', redirect_uri: redirectUri('vk'), state: p.state || q.state
+        grant_type: 'authorization_code', code: p.code, code_verifier: verifier, client_id: clientId,
+        device_id: p.device_id || '', redirect_uri: redirect, state: p.state || q.state
       });
-      const u = (await post('https://id.vk.ru/oauth2/user_info', { client_id: o.vk.clientId, access_token: t.access_token })).user || {};
+      const u = (await post('https://id.vk.ru/oauth2/user_info', { client_id: clientId, access_token: t.access_token })).user || {};
       return { sub: String(u.user_id || t.user_id), name: [u.first_name, u.last_name].filter(Boolean).join(' '), email: u.email || '', photo: u.avatar || '' };
     }
   },
@@ -81,8 +82,18 @@ const PROVIDERS = {
   }
 };
 
+// Android: Credential Manager hands the app an ID token issued to our web client (serverClientId)
+async function googleIdToken(idToken) {
+  const r = await fetch('https://oauth2.googleapis.com/tokeninfo?' + new URLSearchParams({ id_token: idToken }), { signal: AbortSignal.timeout(20000) });
+  const c = await r.json().catch(() => ({}));
+  if (!r.ok || c.error) throw new Error(c.error_description || c.error || `HTTP ${r.status}`);
+  if (c.aud !== o.google.clientId || !['accounts.google.com', 'https://accounts.google.com'].includes(c.iss)) throw new Error('чужой токен');
+  return { sub: c.sub, name: c.name || '', email: c.email || '', photo: c.picture || '' };
+}
+const vkAppRedirect = () => `vk${o.vk.androidClientId}://vk.ru/blank.html`;
+
 const NAMES = { vk: 'VK ID', google: 'Google', apple: 'Apple ID', tg: 'Telegram' };
 const enabled = () => Object.keys(PROVIDERS).filter(p => PROVIDERS[p].on());
 const get = p => PROVIDERS[p]?.on() ? PROVIDERS[p] : null;
 
-module.exports = { enabled, get, NAMES };
+module.exports = { enabled, get, NAMES, challenge, googleIdToken, vkAppRedirect };

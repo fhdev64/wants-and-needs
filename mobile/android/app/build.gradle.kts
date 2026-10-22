@@ -1,3 +1,11 @@
+import java.util.Properties
+
+// VK ID app id (and optionally its secret) for signing in through the VK app: android/local.properties
+// (vkClientId=..., vkClientSecret=...) or -P on the command line. Without it the app signs in to VK via the browser.
+val localProps = Properties().apply { rootProject.file("local.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) } }
+fun prop(name: String) = ((project.findProperty(name) as String?) ?: localProps.getProperty(name) ?: "").trim()
+val vkClientId = prop("vkClientId").takeIf { it.matches(Regex("\\d+")) } ?: ""
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
@@ -30,6 +38,19 @@ android {
         // flag during build.
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        // the SDK insists on all four; "0" stands for "not configured" and MainActivity then never calls the SDK
+        manifestPlaceholders += mapOf(
+            "VKIDClientID" to vkClientId.ifEmpty { "0" },
+            // used by the SDK for its statistics only: the code is swapped for a token on our server
+            "VKIDClientSecret" to prop("vkClientSecret").ifEmpty { "-" },
+            "VKIDRedirectHost" to "vk.ru",
+            "VKIDRedirectScheme" to "vk${vkClientId.ifEmpty { "0" }}",
+        )
+        buildConfigField("String", "VK_CLIENT_ID", "\"$vkClientId\"")
+    }
+
+    buildFeatures {
+        buildConfig = true
     }
 
     buildTypes {
@@ -56,4 +77,5 @@ flutter {
 
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
+    implementation("com.vk.id:vkid:2.7.3")
 }
